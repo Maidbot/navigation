@@ -172,7 +172,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
       delta_strafe_hat = 0 + pf_ran_gaussian(strafe_hat_stddev);
 
       // NOTE: Bias heading noise due to intake and roller brush effects:
-      delta_rot_hat+= - sgn_dot_product * fabs(pf_ran_gaussian(intake_hat_stddev));
+      delta_rot_hat += - sgn_dot_product * fabs(pf_ran_gaussian(intake_hat_stddev));
 
       // Apply sampled update to particle pose
       sample->pose.v[0] += (delta_trans_hat * cs_bearing +
