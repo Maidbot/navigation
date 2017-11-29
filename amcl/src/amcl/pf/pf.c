@@ -42,6 +42,27 @@ static int pf_resample_limit(pf_t *pf, int k);
 // Re-compute the cluster statistics for a sample set
 static void pf_cluster_stats(pf_t *pf, pf_sample_set_t *set);
 
+// In order to include angles in convergence
+static double
+normalize(double z)
+{
+  return atan2(sin(z),cos(z));
+}
+static double
+angle_diff(double a, double b)
+{
+  double d1, d2;
+  a = normalize(a);
+  b = normalize(b);
+  d1 = a-b;
+  d2 = 2*M_PI - fabs(d1);
+  if(d1 > 0)
+    d2 *= -1.0;
+  if(fabs(d1) < fabs(d2))
+    return(d1);
+  else
+    return(d2);
+}
 
 // Create a new filter
 pf_t *pf_alloc(int min_samples, int max_samples,
@@ -73,6 +94,7 @@ pf_t *pf_alloc(int min_samples, int max_samples,
   pf->dist_threshold = 0.5;  // filter considered "converged" if distance to mean
                              // of all samples is less than this distance; only euclidean
                              // distance is considered. (c.f. line 239)
+  pf->angle_threshold = 0.3;
 
   pf->current_set = 0;
   for (j = 0; j < 2; j++)
@@ -158,7 +180,7 @@ void pf_init(pf_t *pf, pf_vector_t mean, pf_matrix_t cov)
     pf_kdtree_insert(set->kdtree, sample->pose, sample->weight);
   }
 
-  pf->w_slow = pf->w_fast = 0.0;
+  pf->w_slow = pf->w_fast = pf->w_avg = 0.0;
 
   pf_pdf_gaussian_free(pdf);
 
@@ -223,21 +245,23 @@ int pf_update_converged(pf_t *pf)
   double total;
 
   set = pf->sets + pf->current_set;
-  double mean_x = 0, mean_y = 0;
+  double mean_x = 0, mean_y = 0, mean_th = 0;
 
   for (i = 0; i < set->sample_count; i++){
     sample = set->samples + i;
 
     mean_x += sample->pose.v[0];
     mean_y += sample->pose.v[1];
+    mean_th += sample->pose.v[2];
   }
   mean_x /= set->sample_count;
   mean_y /= set->sample_count;
+  mean_th /= set->sample_count;
 
   for (i = 0; i < set->sample_count; i++){
     sample = set->samples + i;
     if(fabs(sample->pose.v[0] - mean_x) > pf->dist_threshold ||
-       fabs(sample->pose.v[1] - mean_y) > pf->dist_threshold){
+       fabs(sample->pose.v[1] - mean_y) > pf->dist_threshold) {
       set->converged = 0;
       pf->converged = 0;
       return 0;
@@ -287,6 +311,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
     }
     // Update running averages of likelihood of samples (Prob Rob p258)
     w_avg /= set->sample_count;
+    pf->w_avg = w_avg;
     if(pf->w_slow == 0.0)
       pf->w_slow = w_avg;
     else
@@ -308,7 +333,6 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
       sample->weight = 1.0 / set->sample_count;
     }
   }
-
   return;
 }
 
