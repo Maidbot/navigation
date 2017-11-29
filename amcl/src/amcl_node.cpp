@@ -239,6 +239,8 @@ class AmclNode
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
 
+    ros::Publisher alphas_pub_;  // publish pf moving averages
+
     amcl_hyp_t* initial_pose_hyp_;
     bool first_map_received_;
     bool first_reconfigure_call_;
@@ -799,6 +801,8 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
   first_map_received_ = true;
 }
 
+// TODO -- run lightweight slam (or "screenshot" costmap obstacles) and pass
+// the result to AMCL; could be useful for handling furniture and curtains?
 void
 AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 {

@@ -70,7 +70,9 @@ pf_t *pf_alloc(int min_samples, int max_samples,
   // distrubition will be less than [err].
   pf->pop_err = 0.01;
   pf->pop_z = 3;
-  pf->dist_threshold = 0.5;
+  pf->dist_threshold = 0.5;  // filter considered "converged" if distance to mean
+                             // of all samples is less than this distance; only euclidean
+                             // distance is considered. (c.f. line 239)
 
   pf->current_set = 0;
   for (j = 0; j < 2; j++)
@@ -344,6 +346,7 @@ void pf_update_resample(pf_t *pf)
   total = 0;
   set_b->sample_count = 0;
 
+  // for alpha_slow = alpha_fast = 0; w_fast = w_slow = w_avg, so w_diff = 0.0
   w_diff = 1.0 - pf->w_fast / pf->w_slow;
   if(w_diff < 0.0)
     w_diff = 0.0;
@@ -364,7 +367,7 @@ void pf_update_resample(pf_t *pf)
     sample_b = set_b->samples + set_b->sample_count++;
 
     if(drand48() < w_diff) {
-      // TODO! Disable this for custom lost recovery!
+      // TODO--modeifty "random" pose? -- custom lost here....
       sample_b->pose = (pf->random_pose_fn)(pf->random_pose_data);
     }
     else

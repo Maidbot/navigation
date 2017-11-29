@@ -309,7 +309,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
                             delta_strafe_hat * sn_bearing);
       sample->pose.v[1] += (delta_trans_hat * sn_bearing -
                             delta_strafe_hat * cs_bearing);
-      sample->pose.v[2] += delta_rot_hat ;
+      sample->pose.v[2] += delta_rot_hat;
     }
   }
   break;
