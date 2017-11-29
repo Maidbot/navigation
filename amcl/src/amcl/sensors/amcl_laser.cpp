@@ -461,10 +461,10 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
     //if that's the case we integrate all the beams and hope the filter might converge to
     //the right solution
     bool error = false;
-
+		self->valid_beam_ratio = (double) skipped_beam_count / (double) beam_ind;
+		
     if(skipped_beam_count >= (beam_ind * self->beam_skip_error_threshold)) {
 			// TODO! use this as a lost indicator? At least make this error more verbose.
-			self->valid_beam_ratio = (double) skipped_beam_count / (double) beam_ind;
       fprintf(stderr, "Over %f%% of the observations were not in the map - pf may have converged to wrong pose - integrating all observations\n", (100 * self->beam_skip_error_threshold));
       error = true;
     }
