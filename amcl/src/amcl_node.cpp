@@ -1447,6 +1447,8 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   amcl_internals_.data[23] = (double) set->sample_count;
   // we only have one laser....
   amcl_internals_.data[24] = lasers_[laser_index]->valid_beam_ratio;
+  amcl_internals_.data[25] = lasers_[laser_index]->total_scan_count;
+  amcl_internals_.data[26] = lasers_[laser_index]->useful_scan_count;
 
   amcl_internals_pub_.publish(amcl_internals_);
 

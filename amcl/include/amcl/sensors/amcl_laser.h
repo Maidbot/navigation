@@ -151,6 +151,8 @@ class AMCLLaser : public AMCLSensor
 
   // To export lazer model stats
   public: double valid_beam_ratio;
+  public: double total_scan_count;
+  public: double useful_scan_count; 
 };
 
 
