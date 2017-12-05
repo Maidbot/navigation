@@ -50,6 +50,9 @@
 #include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
 
+// For publishing particle filter stats
+#include "std_msgs/Float64MultiArray.h"
+
 // For transform support
 #include "tf/transform_broadcaster.h"
 #include "tf/transform_listener.h"
@@ -164,6 +167,10 @@ class AmclNode
 
     double getYaw(tf::Pose& t);
 
+    // to expose pf and model internals.
+    std_msgs::Float64MultiArray amcl_internals_;
+    ros::Publisher amcl_internals_pub_;
+
     //parameter for what odom to use
     std::string odom_frame_id_;
 
@@ -238,6 +245,8 @@ class AmclNode
     ros::ServiceServer set_map_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
+
+    ros::Publisher alphas_pub_;  // publish pf moving averages
 
     amcl_hyp_t* initial_pose_hyp_;
     bool first_map_received_;
@@ -421,6 +430,10 @@ AmclNode::AmclNode() :
   cloud_pub_interval.fromSec(1.0);
   tfb_ = new tf::TransformBroadcaster();
   tf_ = new TransformListenerWrapper();
+
+  ROS_INFO("Resizing internals");
+  amcl_internals_.data.resize(100, 0.0);
+  amcl_internals_pub_ = nh_.advertise<std_msgs::Float64MultiArray>("amcl_internals", 2, true);
 
   pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2, true);
   particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2, true);
@@ -799,6 +812,8 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
   first_map_received_ = true;
 }
 
+// TODO -- run lightweight slam (or "screenshot" costmap obstacles) and pass
+// the result to AMCL; could be useful for handling furniture and curtains?
 void
 AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
 {
@@ -1262,11 +1277,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
   }
 
+  amcl_internals_.data[2] = 0.0; // indicates resampling happened.
   if(resampled || force_publication)
   {
     // Read out the current hypotheses
     double max_weight = 0.0;
     int max_weight_hyp = -1;
+    int total_hyps = 0;
     std::vector<amcl_hyp_t> hyps;
     hyps.resize(pf_->sets[pf_->current_set].cluster_count);
     for(int hyp_count = 0;
@@ -1275,6 +1292,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       double weight;
       pf_vector_t pose_mean;
       pf_matrix_t pose_cov;
+      total_hyps++;
       if (!pf_get_cluster_stats(pf_, hyp_count, &weight, &pose_mean, &pose_cov))
       {
         ROS_ERROR("Couldn't get stats on cluster %d", hyp_count);
@@ -1291,6 +1309,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         max_weight_hyp = hyp_count;
       }
     }
+
+    amcl_internals_.data[0] = total_hyps;
+    amcl_internals_.data[1] = max_weight;
+    amcl_internals_.data[2] = 1.0; // indicates resampling happened.
 
     if(max_weight > 0.0)
     {
@@ -1415,6 +1437,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       save_pose_last_time = now;
     }
   }
+
+  // always publish these things, even if no resampling.
+  amcl_internals_.data[10] = (double) pf_->converged;
+  pf_sample_set_t* set = pf_->sets + pf_->current_set;
+  amcl_internals_.data[20] = pf_->w_slow;
+  amcl_internals_.data[21] = pf_->w_fast;
+  amcl_internals_.data[22] = pf_->w_avg;
+  amcl_internals_.data[23] = (double) set->sample_count;
+  // we only have one laser....
+  amcl_internals_.data[24] = lasers_[laser_index]->valid_beam_ratio;
+  amcl_internals_.data[25] = lasers_[laser_index]->total_scan_count;
+  amcl_internals_.data[26] = lasers_[laser_index]->useful_scan_count;
+
+  amcl_internals_pub_.publish(amcl_internals_);
 
 }
 
