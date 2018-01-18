@@ -58,6 +58,7 @@ void ObstacleLayer::onInitialize()
 
   bool track_unknown_space;
   nh.param("track_unknown_space", track_unknown_space, layered_costmap_->isTrackingUnknown());
+  nh.param("combination_method", combination_method_, int(0));
   if (track_unknown_space)
     default_value_ = NO_INFORMATION;
   else
