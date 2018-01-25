@@ -152,7 +152,7 @@ loadMapFromFile(nav_msgs::GetMap::Response* resp,
       //   value = 99 * ratio;
       // }
 
-      value = occ;
+      value = occ * 100;
 
       resp->map.data[MAP_IDX(resp->map.info.width,i,resp->map.info.height - j - 1)] = value;
     }
