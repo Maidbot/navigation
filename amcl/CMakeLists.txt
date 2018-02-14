@@ -1,17 +1,16 @@
 cmake_minimum_required(VERSION 2.8.3)
+set (CMAKE_CXX_STANDARD 11)
 project(amcl)
 
 find_package(catkin REQUIRED
-        COMPONENTS
-            message_filters
-            rosbag
-            roscpp
-            tf
-            dynamic_reconfigure
-            nav_msgs
-            std_srvs
-            message_generation
-        )
+  COMPONENTS
+  grid_map_core
+  grid_map_ros
+  rosbag
+  roscpp
+  tf
+  dynamic_reconfigure
+)
 
 find_package(Boost REQUIRED)
 

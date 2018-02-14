@@ -49,9 +49,8 @@
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
-#include "nav_msgs/GetMap.h"
-#include "nav_msgs/SetMap.h"
 #include "std_srvs/Empty.h"
+#include <grid_map_ros/grid_map_ros.hpp>
 
 // For publishing particle filter stats
 #include "std_msgs/Float64MultiArray.h"
@@ -154,17 +153,15 @@ class AmclNode
                                     std_srvs::Empty::Response& res);
     bool nomotionUpdateCallback(std_srvs::Empty::Request& req,
                                     std_srvs::Empty::Response& res);
-    bool setMapCallback(nav_msgs::SetMap::Request& req,
-                        nav_msgs::SetMap::Response& res);
 
     void laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan);
     void initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
     void handleInitialPoseMessage(const geometry_msgs::PoseWithCovarianceStamped& msg);
-    void mapReceived(const nav_msgs::OccupancyGridConstPtr& msg);
+    void mapReceived(const grid_map_msgs::GridMap& msg);
 
-    void handleMapMessage(const nav_msgs::OccupancyGrid& msg);
+    void handleMapMessage(const grid_map_msgs::GridMap& msg);
     void freeMapDependentMemory();
-    map_t* convertMap( const nav_msgs::OccupancyGrid& map_msg );
+    map_t* convertMap( const grid_map_msgs::GridMap& map_msg );
     void updatePoseFromServer();
     void applyInitialPose();
 
@@ -184,7 +181,6 @@ class AmclNode
     std::string base_frame_id_;
     std::string global_frame_id_;
 
-    bool use_map_topic_;
     bool first_map_only_;
 
     ros::Duration gui_publish_period;
@@ -229,8 +225,6 @@ class AmclNode
     // For slowing play-back when reading directly from a bag file
     ros::WallDuration bag_scan_period_;
 
-    void requestMap();
-
     // Helper to get odometric pose from transform system
     bool getOdomPose(tf::Stamped<tf::Pose>& pose,
                      double& x, double& y, double& yaw,
@@ -246,7 +240,6 @@ class AmclNode
     ros::Publisher particlecloud_pub_;
     ros::ServiceServer global_loc_srv_;
     ros::ServiceServer nomotion_update_srv_; //to let amcl update samples without requiring motion
-    ros::ServiceServer set_map_srv_;
     ros::Subscriber initial_pose_sub_old_;
     ros::Subscriber map_sub_;
 
@@ -345,7 +338,6 @@ AmclNode::AmclNode() :
   boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
   // Grab params off the param server
-  private_nh_.param("use_map_topic", use_map_topic_, false);
   private_nh_.param("first_map_only", first_map_only_, false);
 
   double tmp;
@@ -467,7 +459,6 @@ AmclNode::AmclNode() :
 					 &AmclNode::globalLocalizationCallback,
                                          this);
   nomotion_update_srv_= nh_.advertiseService("request_nomotion_update", &AmclNode::nomotionUpdateCallback, this);
-  set_map_srv_= nh_.advertiseService("set_map", &AmclNode::setMapCallback, this);
 
   laser_scan_sub_ = new message_filters::Subscriber<sensor_msgs::LaserScan>(nh_, scan_topic_, 100);
   laser_scan_filter_ =
@@ -479,12 +470,8 @@ AmclNode::AmclNode() :
                                                    this, _1));
   initial_pose_sub_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceived, this);
 
-  if(use_map_topic_) {
-    map_sub_ = nh_.subscribe("map", 1, &AmclNode::mapReceived, this);
-    ROS_INFO("Subscribed to map topic.");
-  } else {
-    requestMap();
-  }
+  map_sub_ = nh_.subscribe("/grid_map", 1, &AmclNode::mapReceived, this);
+  ROS_INFO("Subscribed to grid map topic.");
   m_force_update = false;
 
   dsrv_ = new dynamic_reconfigure::Server<amcl::AMCLConfig>(ros::NodeHandle("~"));
@@ -817,44 +804,26 @@ AmclNode::checkLaserReceived(const ros::TimerEvent& event)
 }
 
 void
-AmclNode::requestMap()
-{
-  boost::recursive_mutex::scoped_lock ml(configuration_mutex_);
-
-  // get map via RPC
-  nav_msgs::GetMap::Request  req;
-  nav_msgs::GetMap::Response resp;
-  ROS_INFO("Requesting the map...");
-  while(!ros::service::call("static_map", req, resp))
-  {
-    ROS_WARN("Request for map failed; trying again...");
-    ros::Duration d(0.5);
-    d.sleep();
-  }
-  handleMapMessage( resp.map );
-}
-
-void
-AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
+AmclNode::mapReceived(const grid_map_msgs::GridMap& msg)
 {
   if( first_map_only_ && first_map_received_ ) {
     return;
   }
-  handleMapMessage( *msg );
 
+  handleMapMessage(msg);
   first_map_received_ = true;
 }
 
 // TODO -- run lightweight slam (or "screenshot" costmap obstacles) and pass
 // the result to AMCL; could be useful for handling furniture and curtains?
 void
-AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
+AmclNode::handleMapMessage(const grid_map_msgs::GridMap& msg)
 {
   boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
 
-  ROS_INFO("Received a %d X %d map @ %.3f m/pix\n",
-           msg.info.width,
-           msg.info.height,
+  ROS_INFO("Received a %.3f X %.3f map @ %.3f m/pix\n",
+           msg.info.length_x,
+           msg.info.length_y,
            msg.info.resolution);
 
   if(msg.header.frame_id != global_frame_id_)
@@ -953,31 +922,42 @@ AmclNode::freeMapDependentMemory()
 }
 
 /**
- * Convert an OccupancyGrid map message into the internal
+ * Convert an GridMap map message into the internal
  * representation.  This allocates a map_t and returns it.
  */
 map_t*
-AmclNode::convertMap( const nav_msgs::OccupancyGrid& map_msg )
+AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg)
 {
   map_t* map = map_alloc();
   ROS_ASSERT(map);
 
-  map->size_x = map_msg.info.width;
-  map->size_y = map_msg.info.height;
-  map->scale = map_msg.info.resolution;
-  map->origin_x = map_msg.info.origin.position.x + (map->size_x / 2) * map->scale;
-  map->origin_y = map_msg.info.origin.position.y + (map->size_y / 2) * map->scale;
+  grid_map::GridMap gridmap;
+  grid_map::GridMapRosConverter::fromMessage(map_msg, gridmap);
+
+  map->size_x = gridmap.getSize()(0);
+  map->size_y = gridmap.getSize()(1);
+  map->scale = gridmap.getResolution();
+
+  grid_map::Position p = gridmap.getPosition() - 0.5 * gridmap.getLength().matrix();
+  map->origin_x = p.x() + (map->size_x / 2) * map->scale;
+  map->origin_y = p.y() + (map->size_y / 2) * map->scale;
+
   // Convert to player format
-  map->cells = (map_cell_t*)malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
+  map->cells = (map_cell_t*) malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
   ROS_ASSERT(map->cells);
-  for(int i=0;i<map->size_x * map->size_y;i++)
-  {
-    if(map_msg.data[i] == 0)
-      map->cells[i].occ_state = -1;
-    else if(map_msg.data[i] == 100)
-      map->cells[i].occ_state = +1;
+
+  for (grid_map::GridMapIterator it(gridmap); !it.isPastEnd(); ++it) {
+    float value = gridmap.at("map", *it);
+
+    int index = grid_map::getLinearIndexFromIndex(it.getUnwrappedIndex(), gridmap.getSize(), false);
+    int size = gridmap.getSize().prod();
+
+    if(value == 255.0) // FREE
+      map->cells[size - index - 1].occ_state = -1;
+    else if(value == 0.0) // OBSTACLE
+      map->cells[size - index - 1].occ_state = +1;
     else
-      map->cells[i].occ_state = 0;
+      map->cells[size - index - 1].occ_state = 0;
   }
 
   return map;
@@ -1082,16 +1062,6 @@ AmclNode::nomotionUpdateCallback(std_srvs::Empty::Request& req,
 	m_force_update = true;
 	//ROS_INFO("Requesting no-motion update");
 	return true;
-}
-
-bool
-AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
-                         nav_msgs::SetMap::Response& res)
-{
-  handleMapMessage(req.map);
-  handleInitialPoseMessage(req.initial_pose);
-  res.success = true;
-  return true;
 }
 
 void
