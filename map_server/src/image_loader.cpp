@@ -144,16 +144,17 @@ loadMapFromFile(nav_msgs::GetMap::Response* resp,
       // Apply thresholds to RGB means to determine occupancy values for
       // map.  Note that we invert the graphics-ordering of the pixels to
       // produce a map with cell (0,0) in the lower-left corner.
-      if(occ > occ_th)
-        value = +100;
-      else if(occ < free_th)
-        value = 0;
-      else if(mode==TRINARY || alpha < 1.0)
-        value = -1;
-      else {
-        double ratio = (occ - free_th) / (occ_th - free_th);
-        value = 99 * ratio;
-      }
+      // if(occ > occ_th)
+      //   value = +100;
+      // else if(occ < free_th)
+      //   value = 0;
+      // else if(mode==TRINARY || alpha < 1.0)
+      //   value = -1;
+      // else {
+      //   double ratio = (occ - free_th) / (occ_th - free_th);
+      //   value = 99 * ratio;
+      // }
+      value = occ * 100;
 
       resp->map.data[MAP_IDX(resp->map.info.width,i,resp->map.info.height - j - 1)] = value;
     }

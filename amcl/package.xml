@@ -1,6 +1,10 @@
 <package>
     <name>amcl</name>
+<<<<<<< HEAD
     <version>1.14.2</version>
+=======
+    <version>1.12.13</version>
+>>>>>>> maidbot-devel
     <description>
         <p>
             amcl is a probabilistic localization system for a robot moving in
@@ -37,6 +41,7 @@
     <run_depend>tf</run_depend>
     <run_depend>nav_msgs</run_depend>
     <run_depend>std_srvs</run_depend>
+
 
     <test_depend>rostest</test_depend>
     <test_depend>map_server</test_depend>

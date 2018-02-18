@@ -317,5 +317,4 @@ std::vector<geometry_msgs::Point> makeFootprintFromXMLRPC(XmlRpc::XmlRpcValue& f
   }
   return footprint;
 }
-
 }  // end namespace costmap_2d
