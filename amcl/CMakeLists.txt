@@ -11,6 +11,7 @@ find_package(catkin REQUIRED
             nav_msgs
             std_srvs
             message_generation
+            angles
         )
 
 find_package(Boost REQUIRED)

@@ -38,6 +38,7 @@
 
 // Espose internal variables
 #include "amcl/AMCLInternals.h"
+#include "angles/angles.h"
 
 #include "ros/assert.h"
 
@@ -192,6 +193,7 @@ class AmclNode
     ros::Duration save_pose_period;
 
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
+    float last_published_yaw;
 
     map_t* map_;
     char* mapdata;
@@ -1370,8 +1372,19 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
          }
        */
 
+      amcl_internals_.delta_t = (laser_scan->header.stamp - amcl_internals_.header.stamp).toSec();
+      amcl_internals_.header.stamp = laser_scan->header.stamp;
+      amcl_internals_.delta_x = p.pose.pose.position.x
+        - last_published_pose.pose.pose.position.x;
+      amcl_internals_.delta_y = p.pose.pose.position.y
+        - last_published_pose.pose.pose.position.y;
+      amcl_internals_.delta_theta = angles::shortest_angular_distance(
+        angles::normalize_angle(last_published_yaw),
+        angles::normalize_angle(hyps[max_weight_hyp].pf_pose_mean.v[2]));
+
       pose_pub_.publish(p);
       last_published_pose = p;
+      last_published_yaw = hyps[max_weight_hyp].pf_pose_mean.v[2];
 
       ROS_DEBUG("New pose: %6.3f %6.3f %6.3f",
                hyps[max_weight_hyp].pf_pose_mean.v[0],
