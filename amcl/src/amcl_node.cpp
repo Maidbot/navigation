@@ -36,6 +36,9 @@
 #include "amcl/sensors/amcl_odom.h"
 #include "amcl/sensors/amcl_laser.h"
 
+// Espose internal variables
+#include "amcl/AMCLInternals.h"
+
 #include "ros/assert.h"
 
 // roscpp
@@ -168,7 +171,7 @@ class AmclNode
     double getYaw(tf::Pose& t);
 
     // to expose pf and model internals.
-    std_msgs::Float64MultiArray amcl_internals_;
+    AMCLInternals amcl_internals_;
     ros::Publisher amcl_internals_pub_;
 
     //parameter for what odom to use
@@ -431,9 +434,8 @@ AmclNode::AmclNode() :
   tfb_ = new tf::TransformBroadcaster();
   tf_ = new TransformListenerWrapper();
 
-  ROS_INFO("Resizing internals");
-  amcl_internals_.data.resize(100, 0.0);
-  amcl_internals_pub_ = nh_.advertise<std_msgs::Float64MultiArray>("amcl_internals", 2, true);
+  amcl_internals_.header.frame_id = global_frame_id_;
+  amcl_internals_pub_ = nh_.advertise<AMCLInternals>("amcl_internals", 2, true);
 
   pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2, true);
   particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2, true);
@@ -1177,7 +1179,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     odata.delta = delta;
 
     // Use the action data to update the filter
-    odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
+    odom_->UpdateAction(pf_, (AMCLSensorData*) &odata);
 
     // Pose at last filter update
     //this->pf_odom_pose = pose;
@@ -1282,7 +1284,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
   }
 
-  amcl_internals_.data[2] = 0.0; // indicates resampling happened.
   if(resampled || force_publication)
   {
     if (!resampled)
@@ -1319,10 +1320,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         max_weight_hyp = hyp_count;
       }
     }
-
-    amcl_internals_.data[0] = total_hyps;
-    amcl_internals_.data[1] = max_weight;
-    amcl_internals_.data[2] = 1.0; // indicates resampling happened.
 
     if(max_weight > 0.0)
     {
@@ -1449,16 +1446,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   }
 
   // always publish these things, even if no resampling.
-  amcl_internals_.data[10] = (double) pf_->converged;
-  pf_sample_set_t* set = pf_->sets + pf_->current_set;
-  amcl_internals_.data[20] = pf_->w_slow;
-  amcl_internals_.data[21] = pf_->w_fast;
-  amcl_internals_.data[22] = pf_->w_avg;
-  amcl_internals_.data[23] = (double) set->sample_count;
-  // we only have one laser....
-  amcl_internals_.data[24] = lasers_[laser_index]->valid_beam_ratio;
-  amcl_internals_.data[25] = lasers_[laser_index]->total_scan_count;
-  amcl_internals_.data[26] = lasers_[laser_index]->useful_scan_count;
+  amcl_internals_.w_avg = pf_->w_avg;
+  amcl_internals_.converged = pf_->converged;
+  amcl_internals_.beam_skip_percent = lasers_[laser_index]->skipped_beam_ratio;
 
   amcl_internals_pub_.publish(amcl_internals_);
 

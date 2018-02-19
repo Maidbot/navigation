@@ -150,7 +150,7 @@ class AMCLLaser : public AMCLSensor
   private: double chi_outlier;
 
   // To export lazer model stats
-  public: double valid_beam_ratio;
+  public: double skipped_beam_ratio;
   public: double total_scan_count;
   public: double useful_scan_count; 
 };

@@ -1,0 +1,8 @@
+std_msgs/Header header
+bool converged
+float64 beam_skip_percent
+float64 w_avg
+float64 delta_t
+float64 delta_x
+float64 delta_y
+float64 delta_theta
