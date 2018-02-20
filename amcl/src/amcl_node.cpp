@@ -38,7 +38,6 @@
 
 // Espose internal variables
 #include "amcl/AMCLInternals.h"
-#include "angles/angles.h"
 
 #include "ros/assert.h"
 
@@ -1048,7 +1047,7 @@ AmclNode::globalLocalizationCallback(std_srvs::Empty::Request& req,
 // force nomotion updates (amcl updating without requiring motion)
 bool
 AmclNode::nomotionUpdateCallback(std_srvs::Empty::Request& req,
-                                     std_srvs::Empty::Response& res)
+                                 std_srvs::Empty::Response& res)
 {
 	m_force_update = true;
 	//ROS_INFO("Requesting no-motion update");
@@ -1136,6 +1135,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     delta.v[0] = pose.v[0] - pf_odom_pose_.v[0];
     delta.v[1] = pose.v[1] - pf_odom_pose_.v[1];
     delta.v[2] = angle_diff(pose.v[2], pf_odom_pose_.v[2]);
+
+    amcl_internals_.odom_delta_x = delta.v[0];
+    amcl_internals_.odom_delta_y = delta.v[1];
+    amcl_internals_.odom_delta_theta = delta.v[2];
 
     // See if we should update the filter
     bool update = fabs(delta.v[0]) > d_thresh_ ||
@@ -1378,9 +1381,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         - last_published_pose.pose.pose.position.x;
       amcl_internals_.delta_y = p.pose.pose.position.y
         - last_published_pose.pose.pose.position.y;
-      amcl_internals_.delta_theta = angles::shortest_angular_distance(
-        angles::normalize_angle(last_published_yaw),
-        angles::normalize_angle(hyps[max_weight_hyp].pf_pose_mean.v[2]));
+      amcl_internals_.delta_theta = angle_diff(hyps[max_weight_hyp].pf_pose_mean.v[2], last_published_yaw);
 
       pose_pub_.publish(p);
       last_published_pose = p;
