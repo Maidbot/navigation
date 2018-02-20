@@ -1348,6 +1348,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       p.pose.pose.position.y = hyps[max_weight_hyp].pf_pose_mean.v[1];
       tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
                             p.pose.pose.orientation);
+
+      // For convenience, add this data to the internals message
+      amcl_internals_.pose_x = p.pose.pose.position.x;
+      amcl_internals_.pose_y = p.pose.pose.position.y;
+      amcl_internals_.pose_theta = hyps[max_weight_hyp].pf_pose_mean.v[2];
+
       // Copy in the covariance, converting from 3-D to 6-D
       pf_sample_set_t* set = pf_->sets + pf_->current_set;
       for(int i=0; i<2; i++)
