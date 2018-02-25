@@ -380,7 +380,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
     delta_rot = ndata->delta.v[2];
 
     // scale the nominal alphas based on pose confidence and time delta
-    scale = std::min(max_cov_scale, ndata->time_elapsed / expected_time_elapsed);
+    scale = std::min(max_cov_scale, std::max(ndata->time_elapsed / expected_time_elapsed, 1.0));
     multiplier = (1.0 + scale * tanh(1.0 - ndata->pose_confidence));
 
     // Precompute a couple of things
@@ -465,7 +465,7 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
     delta_rot = ndata->delta.v[2];
 
     // scale the nominal alphas based on pose confidence and time delta
-    scale = std::min(max_cov_scale, ndata->time_elapsed / expected_time_elapsed);
+    scale = std::min(max_cov_scale, std::max(ndata->time_elapsed / expected_time_elapsed, 1.0));
     multiplier = (1.0 + scale * tanh(1.0 - ndata->pose_confidence));
 
     // Precompute a couple of things

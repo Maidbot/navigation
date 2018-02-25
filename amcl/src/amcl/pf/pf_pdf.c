@@ -145,7 +145,7 @@ double pf_ran_gaussian(double sigma)
   return(sigma * x2 * sqrt(-2.0*log(w)/w));
 }
 
-// double pf_ran_gaussian_flat(double sigma)
+// double pf_flat_gaussian_flat(double sigma)
 // {
 //   double x1, x2, w, r;
 //

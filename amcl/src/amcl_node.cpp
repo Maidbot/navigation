@@ -367,6 +367,14 @@ AmclNode::AmclNode() :
   private_nh_.param("odom_alpha5", alpha5_, 0.2);
   private_nh_.param("odom_alpha6", alpha6_, 0.2);
 
+  // For scaling variance and determining quality
+  // double nominal_beam_skip_percent_;
+  // double max_cov_scale_, expected_time_elapsed_;
+
+  private_nh_.param("nominal_beam_skip_percent", nominal_beam_skip_percent_, 0.6);
+  private_nh_.param("max_cov_scale", max_cov_scale_, 2.0);
+  private_nh_.param("expected_time_elapsed", expected_time_elapsed_, 0.1);
+
   private_nh_.param("do_beamskip", do_beamskip_, false);
   private_nh_.param("beam_skip_distance", beam_skip_distance_, 0.5);
   private_nh_.param("beam_skip_threshold", beam_skip_threshold_, 0.3);
@@ -418,6 +426,8 @@ AmclNode::AmclNode() :
              tmp_model_type.c_str());
     odom_model_type_ = ODOM_MODEL_DIFF;
   }
+
+  ROS_INFO("Initializeing %s odom model in AMCL", tmp_model_type.c_str());
 
   private_nh_.param("update_min_d", d_thresh_, 0.2);
   private_nh_.param("update_min_a", a_thresh_, M_PI/6.0);
@@ -549,6 +559,12 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
     odom_model_type_ = ODOM_MODEL_OMNI_CORRECTED;
   else if(config.odom_model_type == "omni-rosie")
     odom_model_type_ = ODOM_MODEL_OMNI_ROSIE;
+  else if(config.odom_model_type == "omni-scaled-variance")
+    odom_model_type_ = ODOM_MODEL_OMNI_SCALED_VARIANCE;
+  else if(config.odom_model_type == "omni-bimodal")
+    odom_model_type_ = ODOM_MODEL_OMNI_BIMODAL;
+  else if(config.odom_model_type == "omni-bimodal-scaled-variance")
+    odom_model_type_ = ODOM_MODEL_OMNI_BIMODAL_SCALED_VARIANCE;
 
   if(config.min_particles > config.max_particles)
   {
@@ -592,7 +608,7 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   delete odom_;
   odom_ = new AMCLOdom();
   ROS_ASSERT(odom_);
-  odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_ );
+  odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_, max_cov_scale_, expected_time_elapsed_ );
   // Laser
   delete laser_;
   laser_ = new AMCLLaser(max_beams_, map_);
@@ -884,7 +900,7 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
   delete odom_;
   odom_ = new AMCLOdom();
   ROS_ASSERT(odom_);
-  odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_ );
+  odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_, max_cov_scale_, expected_time_elapsed_ );
   // Laser
   delete laser_;
   laser_ = new AMCLLaser(max_beams_, map_);
@@ -1206,6 +1222,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       odata.pose_confidence = (beam_skip_error_threshold_ - amcl_internals_.beam_skip_percent)
         / (beam_skip_error_threshold_ - nominal_beam_skip_percent_);
     }
+    amcl_internals_.pose_confidence = odata.pose_confidence;
 
 
     // Use the action data to update the filter
