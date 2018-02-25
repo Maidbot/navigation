@@ -275,6 +275,10 @@ class AmclNode
     laser_model_t laser_model_type_;
     bool tf_broadcast_;
 
+    // For scaling variance and determining quality
+    double nominal_beam_skip_percent_;
+    double max_cov_scale_, expected_time_elapsed_;
+
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 
     ros::Time last_laser_received_ts_;
@@ -402,6 +406,12 @@ AmclNode::AmclNode() :
     odom_model_type_ = ODOM_MODEL_OMNI_CORRECTED;
   else if(tmp_model_type == "omni-rosie")
     odom_model_type_ = ODOM_MODEL_OMNI_ROSIE;
+  else if(tmp_model_type == "omni-scaled-variance")
+    odom_model_type_ = ODOM_MODEL_OMNI_SCALED_VARIANCE;
+  else if(tmp_model_type == "omni-bimodal")
+    odom_model_type_ = ODOM_MODEL_OMNI_BIMODAL;
+  else if(tmp_model_type == "omni-bimodal-scaled-variance")
+    odom_model_type_ = ODOM_MODEL_OMNI_BIMODAL_SCALED_VARIANCE;
   else
   {
     ROS_WARN("Unknown odom model type \"%s\"; defaulting to diff model",
@@ -1066,6 +1076,7 @@ AmclNode::setMapCallback(nav_msgs::SetMap::Request& req,
 void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 {
+  ros::Duration elapsed_since_last_scan = ros::Time::now() - last_laser_received_ts_;
   last_laser_received_ts_ = ros::Time::now();
   if( map_ == NULL ) {
     return;
@@ -1181,6 +1192,21 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     // Modify the delta in the action data so the filter gets
     // updated correctly
     odata.delta = delta;
+
+    // How long since the last update?
+    odata.time_elapsed = elapsed_since_last_scan.toSec();
+
+    // What's the current pose quality...for now just by beam skip.
+    if(amcl_internals_.beam_skip_percent <= nominal_beam_skip_percent_) {
+      odata.pose_confidence = 1.0;
+    } else if(amcl_internals_.beam_skip_percent >= beam_skip_error_threshold_) {
+      odata.pose_confidence = 0.0;
+    } else {
+      // linear scale in confidence.... wtf why not to start
+      odata.pose_confidence = (beam_skip_error_threshold_ - amcl_internals_.beam_skip_percent)
+        / (beam_skip_error_threshold_ - nominal_beam_skip_percent_);
+    }
+
 
     // Use the action data to update the filter
     odom_->UpdateAction(pf_, (AMCLSensorData*) &odata);
