@@ -809,7 +809,6 @@ AmclNode::mapReceived(const nav_msgs::OccupancyGridConstPtr& msg)
   if( first_map_only_ && first_map_received_ ) {
     return;
   }
-
   handleMapMessage( *msg );
 
   first_map_received_ = true;
