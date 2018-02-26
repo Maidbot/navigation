@@ -33,7 +33,7 @@
 #include <assert.h>
 #include <unistd.h>
 
-#include "amcl_laser.h"
+#include "amcl/sensors/amcl_laser.h"
 
 using namespace amcl;
 
@@ -112,7 +112,7 @@ AMCLLaser::SetModelLikelihoodFieldProb(double z_hit,
   this->beam_skip_distance = beam_skip_distance;
   this->beam_skip_threshold = beam_skip_threshold;
   this->beam_skip_error_threshold = beam_skip_error_threshold;
-	this->valid_beam_ratio = 0.0;
+	this->skipped_beam_ratio = 0.0;
 	this->useful_scan_count = 0.0;
 	this->total_scan_count = 0.0;
   map_update_cspace(this->map, max_occ_dist);
@@ -463,7 +463,7 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
     //if that's the case we integrate all the beams and hope the filter might converge to
     //the right solution
     bool error = false;
-		self->valid_beam_ratio = (double) skipped_beam_count / (double) beam_ind;
+		self->skipped_beam_ratio = (double) skipped_beam_count / (double) beam_ind;
 		self->total_scan_count = (double) beam_ind;
 		self->useful_scan_count = (double) skipped_beam_count;
 

@@ -1,6 +1,6 @@
 <package>
     <name>move_slow_and_clear</name>
-    <version>1.12.13</version>
+    <version>1.14.2</version>
     <description>
 
         move_slow_and_clear
@@ -10,6 +10,7 @@
     <author>contradict@gmail.com</author>
     <maintainer email="davidvlu@gmail.com">David V. Lu!!</maintainer>
     <maintainer email="mferguson@fetchrobotics.com">Michael Ferguson</maintainer>
+    <maintainer email="ahoy@fetchrobotics.com">Aaron Hoy</maintainer>
     <license>BSD</license>
     <url>http://wiki.ros.org/move_slow_and_clear</url>
 

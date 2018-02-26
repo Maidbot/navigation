@@ -31,10 +31,13 @@
 // Signal handling
 #include <signal.h>
 
-#include "map/map.h"
-#include "pf/pf.h"
-#include "sensors/amcl_odom.h"
-#include "sensors/amcl_laser.h"
+#include "amcl/map/map.h"
+#include "amcl/pf/pf.h"
+#include "amcl/sensors/amcl_odom.h"
+#include "amcl/sensors/amcl_laser.h"
+
+// Espose internal variables
+#include "amcl/AMCLInternals.h"
 
 #include "ros/assert.h"
 
@@ -168,7 +171,7 @@ class AmclNode
     double getYaw(tf::Pose& t);
 
     // to expose pf and model internals.
-    std_msgs::Float64MultiArray amcl_internals_;
+    AMCLInternals amcl_internals_;
     ros::Publisher amcl_internals_pub_;
 
     //parameter for what odom to use
@@ -189,6 +192,7 @@ class AmclNode
     ros::Duration save_pose_period;
 
     geometry_msgs::PoseWithCovarianceStamped last_published_pose;
+    float last_published_yaw;
 
     map_t* map_;
     char* mapdata;
@@ -431,9 +435,8 @@ AmclNode::AmclNode() :
   tfb_ = new tf::TransformBroadcaster();
   tf_ = new TransformListenerWrapper();
 
-  ROS_INFO("Resizing internals");
-  amcl_internals_.data.resize(100, 0.0);
-  amcl_internals_pub_ = nh_.advertise<std_msgs::Float64MultiArray>("amcl_internals", 2, true);
+  amcl_internals_.header.frame_id = global_frame_id_;
+  amcl_internals_pub_ = nh_.advertise<AMCLInternals>("amcl_internals", 2, true);
 
   pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2, true);
   particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2, true);
@@ -824,6 +827,11 @@ AmclNode::handleMapMessage(const nav_msgs::OccupancyGrid& msg)
            msg.info.height,
            msg.info.resolution);
 
+  if(msg.header.frame_id != global_frame_id_)
+    ROS_WARN("Frame_id of map received:'%s' doesn't match global_frame_id:'%s;'. This could cause issues with reading published topics",
+             msg.header.frame_id.c_str(),
+             global_frame_id_.c_str());
+
   freeMapDependentMemory();
   // Clear queued laser objects because they hold pointers to the existing
   // map, #5202.
@@ -1039,7 +1047,7 @@ AmclNode::globalLocalizationCallback(std_srvs::Empty::Request& req,
 // force nomotion updates (amcl updating without requiring motion)
 bool
 AmclNode::nomotionUpdateCallback(std_srvs::Empty::Request& req,
-                                     std_srvs::Empty::Response& res)
+                                 std_srvs::Empty::Response& res)
 {
 	m_force_update = true;
 	//ROS_INFO("Requesting no-motion update");
@@ -1128,6 +1136,10 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     delta.v[1] = pose.v[1] - pf_odom_pose_.v[1];
     delta.v[2] = angle_diff(pose.v[2], pf_odom_pose_.v[2]);
 
+    amcl_internals_.odom_delta_x = delta.v[0];
+    amcl_internals_.odom_delta_y = delta.v[1];
+    amcl_internals_.odom_delta_theta = delta.v[2];
+
     // See if we should update the filter
     bool update = fabs(delta.v[0]) > d_thresh_ ||
                   fabs(delta.v[1]) > d_thresh_ ||
@@ -1172,7 +1184,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     odata.delta = delta;
 
     // Use the action data to update the filter
-    odom_->UpdateAction(pf_, (AMCLSensorData*)&odata);
+    odom_->UpdateAction(pf_, (AMCLSensorData*) &odata);
 
     // Pose at last filter update
     //this->pf_odom_pose = pose;
@@ -1277,9 +1289,13 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
   }
 
-  amcl_internals_.data[2] = 0.0; // indicates resampling happened.
   if(resampled || force_publication)
   {
+    if (!resampled)
+    {
+	    // re-compute the cluster statistics
+	    pf_cluster_stats(pf_, pf_->sets);
+    }
     // Read out the current hypotheses
     double max_weight = 0.0;
     int max_weight_hyp = -1;
@@ -1310,10 +1326,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       }
     }
 
-    amcl_internals_.data[0] = total_hyps;
-    amcl_internals_.data[1] = max_weight;
-    amcl_internals_.data[2] = 1.0; // indicates resampling happened.
-
     if(max_weight > 0.0)
     {
       ROS_DEBUG("Max weight pose: %.3f %.3f %.3f",
@@ -1336,6 +1348,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       p.pose.pose.position.y = hyps[max_weight_hyp].pf_pose_mean.v[1];
       tf::quaternionTFToMsg(tf::createQuaternionFromYaw(hyps[max_weight_hyp].pf_pose_mean.v[2]),
                             p.pose.pose.orientation);
+
+      // For convenience, add this data to the internals message
+      amcl_internals_.pose_x = p.pose.pose.position.x;
+      amcl_internals_.pose_y = p.pose.pose.position.y;
+      amcl_internals_.pose_theta = hyps[max_weight_hyp].pf_pose_mean.v[2];
+
       // Copy in the covariance, converting from 3-D to 6-D
       pf_sample_set_t* set = pf_->sets + pf_->current_set;
       for(int i=0; i<2; i++)
@@ -1363,8 +1381,17 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
          }
        */
 
+      amcl_internals_.delta_t = (laser_scan->header.stamp - amcl_internals_.header.stamp).toSec();
+      amcl_internals_.header.stamp = laser_scan->header.stamp;
+      amcl_internals_.delta_x = p.pose.pose.position.x
+        - last_published_pose.pose.pose.position.x;
+      amcl_internals_.delta_y = p.pose.pose.position.y
+        - last_published_pose.pose.pose.position.y;
+      amcl_internals_.delta_theta = angle_diff(hyps[max_weight_hyp].pf_pose_mean.v[2], last_published_yaw);
+
       pose_pub_.publish(p);
       last_published_pose = p;
+      last_published_yaw = hyps[max_weight_hyp].pf_pose_mean.v[2];
 
       ROS_DEBUG("New pose: %6.3f %6.3f %6.3f",
                hyps[max_weight_hyp].pf_pose_mean.v[0],
@@ -1439,16 +1466,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
   }
 
   // always publish these things, even if no resampling.
-  amcl_internals_.data[10] = (double) pf_->converged;
-  pf_sample_set_t* set = pf_->sets + pf_->current_set;
-  amcl_internals_.data[20] = pf_->w_slow;
-  amcl_internals_.data[21] = pf_->w_fast;
-  amcl_internals_.data[22] = pf_->w_avg;
-  amcl_internals_.data[23] = (double) set->sample_count;
-  // we only have one laser....
-  amcl_internals_.data[24] = lasers_[laser_index]->valid_beam_ratio;
-  amcl_internals_.data[25] = lasers_[laser_index]->total_scan_count;
-  amcl_internals_.data[26] = lasers_[laser_index]->useful_scan_count;
+  amcl_internals_.w_avg = pf_->w_avg;
+  amcl_internals_.converged = pf_->converged;
+  amcl_internals_.beam_skip_percent = lasers_[laser_index]->skipped_beam_ratio;
 
   amcl_internals_pub_.publish(amcl_internals_);
 

@@ -3,14 +3,28 @@ project(amcl)
 
 find_package(catkin REQUIRED
         COMPONENTS
+            message_filters
             rosbag
             roscpp
             tf
             dynamic_reconfigure
             nav_msgs
+            std_srvs
+            message_generation
         )
 
 find_package(Boost REQUIRED)
+
+# messages monitoring amcl health
+add_message_files(
+  FILES
+  AMCLInternals.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+)
 
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
@@ -23,11 +37,12 @@ catkin_package(
         roscpp
         dynamic_reconfigure
         tf
+  CATKIN_DEPENDS nav_msgs std_srvs std_msgs
   INCLUDE_DIRS include
   LIBRARIES amcl_sensors amcl_map amcl_pf
 )
 
-include_directories(include/amcl include/amcl/map include/amcl/sensors include/amcl/pf)
+include_directories(include)
 include_directories(${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
 
 add_library(amcl_pf
@@ -53,14 +68,15 @@ target_link_libraries(amcl_sensors amcl_map amcl_pf)
 
 
 add_executable(amcl
-                       src/amcl_node.cpp)
-add_dependencies(amcl amcl_gencfg)
+               src/amcl_node.cpp)
+add_dependencies(amcl ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
 target_link_libraries(amcl
     amcl_sensors amcl_map amcl_pf
     ${Boost_LIBRARIES}
     ${catkin_LIBRARIES}
 )
+
 
 install( TARGETS
     amcl amcl_sensors amcl_map amcl_pf
