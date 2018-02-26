@@ -1312,6 +1312,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
     pf_sample_set_t* set = pf_->sets + pf_->current_set;
     ROS_DEBUG("Num samples: %d\n", set->sample_count);
+    amcl_internals_.sample_count = set->sample_count;
 
     // Publish the resulting cloud
     // TODO: set maximum rate for publishing
