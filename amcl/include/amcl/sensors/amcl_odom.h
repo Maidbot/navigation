@@ -57,7 +57,7 @@ class AMCLOdomData : public AMCLSensorData
   // Change in odometric pose
   public: pf_vector_t delta;
 
-  // Time elapzed (in seconds) since the last update
+  // Time elapsed (in seconds) since the last update
   public: double time_elapsed;
 
   // Quality of the current pose estimate [0.0, 1.0]
