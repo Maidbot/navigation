@@ -41,7 +41,11 @@ typedef enum
   ODOM_MODEL_OMNI,
   ODOM_MODEL_DIFF_CORRECTED,
   ODOM_MODEL_OMNI_CORRECTED,
-  ODOM_MODEL_OMNI_ROSIE
+  ODOM_MODEL_OMNI_ROSIE,
+  // based on ODOM_MODEL_OMNI_CORRECTED
+  ODOM_MODEL_OMNI_SCALED_VARIANCE,
+  ODOM_MODEL_OMNI_BIMODAL,
+  ODOM_MODEL_OMNI_BIMODAL_SCALED_VARIANCE
 } odom_model_t;
 
 // Odometric sensor data
@@ -52,6 +56,12 @@ class AMCLOdomData : public AMCLSensorData
 
   // Change in odometric pose
   public: pf_vector_t delta;
+
+  // Time elapsed (in seconds) since the last update
+  public: double time_elapsed;
+
+  // Quality of the current pose estimate [0.0, 1.0]
+  public: double pose_confidence;
 };
 
 
@@ -78,7 +88,9 @@ class AMCLOdom : public AMCLSensor
                          double alpha3,
                          double alpha4,
                          double alpha5 = 0,
-                         double alpha6 = 0);
+                         double alpha6 = 0,
+                         double max_cov_scale = 5.0,
+                         double expected_time_elapsed = 0.1);
 
   // Update the filter based on the action model.  Returns true if the filter
   // has been updated.
@@ -92,6 +104,12 @@ class AMCLOdom : public AMCLSensor
 
   // Drift parameters
   private: double alpha1, alpha2, alpha3, alpha4, alpha5, alpha6;
+
+  // Max scale factor for ODOM_MODEL_OMNI_SCALED_VARIANCE
+  private: double max_cov_scale;
+
+  // expected time between odom updates
+  private: double expected_time_elapsed;
 };
 
 
