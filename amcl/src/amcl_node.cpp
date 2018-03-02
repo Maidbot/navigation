@@ -1142,7 +1142,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     laser_index = frame_to_laser_[laser_scan->header.frame_id];
   }
 
-  // Where was the robot when this scan was taken?
+  // Robot's pose in the odom frame when this scan was taken; from TF.
   pf_vector_t pose;
   if(!getOdomPose(latest_odom_pose_, pose.v[0], pose.v[1], pose.v[2],
                   laser_scan->header.stamp, base_frame_id_))
@@ -1150,8 +1150,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     ROS_ERROR("Couldn't determine robot's pose associated with laser scan");
     return;
   }
-
-
   pf_vector_t delta = pf_vector_zero();
 
   if(pf_init_)
@@ -1167,9 +1165,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     amcl_internals_.odom_delta_theta = delta.v[2];
 
     // See if we should update the filter
-    bool update = fabs(delta.v[0]) > d_thresh_ ||
-                  fabs(delta.v[1]) > d_thresh_ ||
-                  fabs(delta.v[2]) > a_thresh_;
+    bool update = fabs(delta.v[0]) >= d_thresh_ ||
+                  fabs(delta.v[1]) >= d_thresh_ ||
+                  fabs(delta.v[2]) >= a_thresh_;
     update = update || m_force_update;
     m_force_update=false;
 
