@@ -90,7 +90,8 @@ class AMCLOdom : public AMCLSensor
                          double alpha5 = 0,
                          double alpha6 = 0,
                          double max_cov_scale = 5.0,
-                         double expected_time_elapsed = 0.1);
+                         double expected_time_elapsed = 0.1,
+                         double peak_mode_delta_pct = 0.2);
 
   // Update the filter based on the action model.  Returns true if the filter
   // has been updated.
@@ -110,6 +111,9 @@ class AMCLOdom : public AMCLSensor
 
   // expected time between odom updates
   private: double expected_time_elapsed;
+
+  // For bimodal update, how separate should the peaks be (percent of delta)
+  private: double peak_mode_delta_pct;
 };
 
 

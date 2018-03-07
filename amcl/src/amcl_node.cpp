@@ -278,6 +278,7 @@ class AmclNode
     // For scaling variance and determining quality
     double nominal_beam_skip_percent_;
     double max_cov_scale_, expected_time_elapsed_;
+    double peak_mode_delta_pct_;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 
@@ -374,11 +375,12 @@ AmclNode::AmclNode() :
   private_nh_.param("nominal_beam_skip_percent", nominal_beam_skip_percent_, 0.6);
   private_nh_.param("max_cov_scale", max_cov_scale_, 2.0);
   private_nh_.param("expected_time_elapsed", expected_time_elapsed_, 0.1);
+  private_nh_.param("peak_mode_delta_pct", peak_mode_delta_pct_, 0.1);
 
   private_nh_.param("do_beamskip", do_beamskip_, false);
   private_nh_.param("beam_skip_distance", beam_skip_distance_, 0.5);
   private_nh_.param("beam_skip_threshold", beam_skip_threshold_, 0.3);
-  private_nh_.param("beam_skip_error_threshold_", beam_skip_error_threshold_, 0.9);
+  private_nh_.param("beam_skip_error_threshold", beam_skip_error_threshold_, 0.9);
 
   private_nh_.param("laser_z_hit", z_hit_, 0.95);
   private_nh_.param("laser_z_short", z_short_, 0.1);
