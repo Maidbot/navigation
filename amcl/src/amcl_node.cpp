@@ -278,6 +278,7 @@ class AmclNode
     // For scaling variance and determining quality
     double nominal_beam_skip_percent_;
     double max_cov_scale_, expected_time_elapsed_;
+    double peak_mode_delta_pct_;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
 
@@ -374,11 +375,12 @@ AmclNode::AmclNode() :
   private_nh_.param("nominal_beam_skip_percent", nominal_beam_skip_percent_, 0.6);
   private_nh_.param("max_cov_scale", max_cov_scale_, 2.0);
   private_nh_.param("expected_time_elapsed", expected_time_elapsed_, 0.1);
+  private_nh_.param("peak_mode_delta_pct", peak_mode_delta_pct_, 0.1);
 
   private_nh_.param("do_beamskip", do_beamskip_, false);
   private_nh_.param("beam_skip_distance", beam_skip_distance_, 0.5);
   private_nh_.param("beam_skip_threshold", beam_skip_threshold_, 0.3);
-  private_nh_.param("beam_skip_error_threshold_", beam_skip_error_threshold_, 0.9);
+  private_nh_.param("beam_skip_error_threshold", beam_skip_error_threshold_, 0.9);
 
   private_nh_.param("laser_z_hit", z_hit_, 0.95);
   private_nh_.param("laser_z_short", z_short_, 0.1);
@@ -1142,7 +1144,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     laser_index = frame_to_laser_[laser_scan->header.frame_id];
   }
 
-  // Where was the robot when this scan was taken?
+  // Robot's pose in the odom frame when this scan was taken; from TF.
   pf_vector_t pose;
   if(!getOdomPose(latest_odom_pose_, pose.v[0], pose.v[1], pose.v[2],
                   laser_scan->header.stamp, base_frame_id_))
@@ -1150,8 +1152,6 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     ROS_ERROR("Couldn't determine robot's pose associated with laser scan");
     return;
   }
-
-
   pf_vector_t delta = pf_vector_zero();
 
   if(pf_init_)
@@ -1167,9 +1167,9 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     amcl_internals_.odom_delta_theta = delta.v[2];
 
     // See if we should update the filter
-    bool update = fabs(delta.v[0]) > d_thresh_ ||
-                  fabs(delta.v[1]) > d_thresh_ ||
-                  fabs(delta.v[2]) > a_thresh_;
+    bool update = fabs(delta.v[0]) >= d_thresh_ ||
+                  fabs(delta.v[1]) >= d_thresh_ ||
+                  fabs(delta.v[2]) >= a_thresh_;
     update = update || m_force_update;
     m_force_update=false;
 
