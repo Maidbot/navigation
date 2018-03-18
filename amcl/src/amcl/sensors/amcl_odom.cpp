@@ -108,7 +108,8 @@ AMCLOdom::SetModel( odom_model_t type,
                     double alpha6,
                     double max_cov_scale,
                     double expected_time_elapsed,
-                    double peak_mode_delta_pct )
+                    double peak_mode_delta_pct,
+                    double noise_floor_scale )
 {
   this->model_type = type;
   this->alpha1 = alpha1;
@@ -120,6 +121,7 @@ AMCLOdom::SetModel( odom_model_t type,
   this->max_cov_scale = max_cov_scale;
   this->expected_time_elapsed = expected_time_elapsed;
   this->peak_mode_delta_pct = peak_mode_delta_pct;
+  this->noise_floor_scale = noise_floor_scale;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -470,13 +472,15 @@ bool AMCLOdom::UpdateAction(pf_t *pf, AMCLSensorData *data)
     scale = std::min(max_cov_scale, std::max(ndata->time_elapsed / expected_time_elapsed, 1.0));
     multiplier = (1.0 + scale * tanh(1.0 - ndata->pose_confidence));
 
+    ndata->multiplier = multiplier;
+
     // Precompute a couple of things
     double trans_hat_stddev = sqrt( alpha3 * multiplier * (delta_trans*delta_trans) +
-                                    alpha1 * multiplier * (delta_rot*delta_rot) + multiplier * 0.5 * (alpha3 + alpha1) / 10.0);
+                                    alpha1 * multiplier * (delta_rot*delta_rot) + multiplier * 0.5 * (alpha3 + alpha1) * noise_floor_scale);
     double rot_hat_stddev = sqrt( alpha4 * multiplier * (delta_rot*delta_rot) +
-                                  alpha2 * multiplier * (delta_trans*delta_trans) + multiplier * 0.5 * (alpha4 + alpha2) / 10.0);
+                                  alpha2 * multiplier * (delta_trans*delta_trans) + multiplier * 0.5 * (alpha4 + alpha2) * noise_floor_scale);
     double strafe_hat_stddev = sqrt( alpha1 * multiplier * (delta_rot*delta_rot) +
-                                     alpha5 * multiplier * (delta_trans*delta_trans) + multiplier * 0.5 * (alpha1 + alpha5) / 10.0);
+                                     alpha5 * multiplier * (delta_trans*delta_trans) + multiplier * 0.5 * (alpha1 + alpha5) * noise_floor_scale);
 
     for (int i = 0; i < set->sample_count; i++)
     {

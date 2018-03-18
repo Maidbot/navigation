@@ -277,7 +277,7 @@ class AmclNode
 
     // For scaling variance and determining quality
     double nominal_beam_skip_percent_;
-    double max_cov_scale_, expected_time_elapsed_;
+    double max_cov_scale_, expected_time_elapsed_, noise_floor_scale_;
     double peak_mode_delta_pct_;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
@@ -376,6 +376,7 @@ AmclNode::AmclNode() :
   private_nh_.param("max_cov_scale", max_cov_scale_, 2.0);
   private_nh_.param("expected_time_elapsed", expected_time_elapsed_, 0.1);
   private_nh_.param("peak_mode_delta_pct", peak_mode_delta_pct_, 0.1);
+  private_nh_.param("noise_floor_scale", noise_floor_scale_, 0.1);
 
   private_nh_.param("do_beamskip", do_beamskip_, false);
   private_nh_.param("beam_skip_distance", beam_skip_distance_, 0.5);
@@ -610,7 +611,9 @@ void AmclNode::reconfigureCB(AMCLConfig &config, uint32_t level)
   delete odom_;
   odom_ = new AMCLOdom();
   ROS_ASSERT(odom_);
-  odom_->SetModel( odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_, max_cov_scale_, expected_time_elapsed_ );
+  odom_->SetModel(
+    odom_model_type_, alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_,
+    max_cov_scale_, expected_time_elapsed_, noise_floor_scale_ );
   // Laser
   delete laser_;
   laser_ = new AMCLLaser(max_beams_, map_);
@@ -1227,6 +1230,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
     // Use the action data to update the filter
     odom_->UpdateAction(pf_, (AMCLSensorData*) &odata);
+    amcl_internals_.noise_scale = odata.multiplier;
 
     // Pose at last filter update
     //this->pf_odom_pose = pose;
@@ -1397,6 +1401,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       amcl_internals_.pose_y = p.pose.pose.position.y;
       amcl_internals_.pose_theta = hyps[max_weight_hyp].pf_pose_mean.v[2];
 
+
       // Copy in the covariance, converting from 3-D to 6-D
       pf_sample_set_t* set = pf_->sets + pf_->current_set;
       for(int i=0; i<2; i++)
@@ -1405,14 +1410,20 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
         {
           // Report the overall filter covariance, rather than the
           // covariance for the highest-weight cluster
-          //p.covariance[6*i+j] = hyps[max_weight_hyp].pf_pose_cov.m[i][j];
-          p.pose.covariance[6*i+j] = set->cov.m[i][j];
+          // p.pose.covariance[6*i+j] = set->cov.m[i][j];
+
+          // Report the covariance for the highest weight cluster.
+          p.pose.covariance[6*i+j] = hyps[max_weight_hyp].pf_pose_cov.m[i][j];
+
         }
       }
       // Report the overall filter covariance, rather than the
       // covariance for the highest-weight cluster
-      //p.covariance[6*5+5] = hyps[max_weight_hyp].pf_pose_cov.m[2][2];
-      p.pose.covariance[6*5+5] = set->cov.m[2][2];
+      // p.pose.covariance[6*5+5] = set->cov.m[2][2];
+
+      // Report the covariance for the hightest weight cluster.
+      p.pose.covariance[6*5+5] = hyps[max_weight_hyp].pf_pose_cov.m[2][2];
+
 
       /*
          printf("cov:\n");

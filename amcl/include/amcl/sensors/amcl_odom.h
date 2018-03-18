@@ -62,6 +62,9 @@ class AMCLOdomData : public AMCLSensorData
 
   // Quality of the current pose estimate [0.0, 1.0]
   public: double pose_confidence;
+
+  // Set in models with scaled noise based on confidence
+  public: double multiplier;
 };
 
 
@@ -91,7 +94,8 @@ class AMCLOdom : public AMCLSensor
                          double alpha6 = 0,
                          double max_cov_scale = 5.0,
                          double expected_time_elapsed = 0.1,
-                         double peak_mode_delta_pct = 0.2);
+                         double peak_mode_delta_pct = 0.2,
+                         double noise_floor_scale = 0.1);
 
   // Update the filter based on the action model.  Returns true if the filter
   // has been updated.
@@ -114,6 +118,9 @@ class AMCLOdom : public AMCLSensor
 
   // For bimodal update, how separate should the peaks be (percent of delta)
   private: double peak_mode_delta_pct;
+
+  // Scale noise alphas to produce noise floor and limit over-converged filter
+  private: double noise_floor_scale;
 };
 
 

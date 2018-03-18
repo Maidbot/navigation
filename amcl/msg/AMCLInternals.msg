@@ -13,4 +13,5 @@ float64 odom_delta_x
 float64 odom_delta_y
 float64 odom_delta_theta
 float64 pose_confidence
+float64 noise_scale
 int64 sample_count
