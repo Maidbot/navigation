@@ -32,12 +32,16 @@
     <build_depend>std_srvs</build_depend>
     <build_depend>tf</build_depend>
     <build_depend>message_generation</build_depend>
+    <build_depend>maidbot_spatial_data</build_depend>
+    <build_depend>maidbot_localization</build_depend>
 
     <run_depend>rosbag</run_depend>
     <run_depend>roscpp</run_depend>
     <run_depend>dynamic_reconfigure</run_depend>
     <run_depend>tf</run_depend>
     <run_depend>grid_map</run_depend>
+    <run_depend>maidbot_spatial_data</run_depend>
+    <run_depend>maidbot_localization</run_depend>
 
     <test_depend>rostest</test_depend>
     <test_depend>map_server</test_depend>

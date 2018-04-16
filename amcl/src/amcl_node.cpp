@@ -37,7 +37,7 @@
 #include "amcl/sensors/amcl_laser.h"
 
 // Espose internal variables
-#include "amcl/AMCLInternals.h"
+#include "maidbot_localization/AMCLInternals.h"
 
 #include "ros/assert.h"
 
@@ -50,7 +50,9 @@
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
 #include "std_srvs/Empty.h"
+
 #include <grid_map_ros/grid_map_ros.hpp>
+#include <maidbot_spatial_data/GetGrid.h>
 
 // For publishing particle filter stats
 #include "std_msgs/Float64MultiArray.h"
@@ -168,7 +170,7 @@ class AmclNode
     double getYaw(tf::Pose& t);
 
     // to expose pf and model internals.
-    AMCLInternals amcl_internals_;
+    maidbot_localization::AMCLInternals amcl_internals_;
     ros::Publisher amcl_internals_pub_;
 
     //parameter for what odom to use
@@ -181,6 +183,7 @@ class AmclNode
     std::string base_frame_id_;
     std::string global_frame_id_;
 
+    bool use_map_topic_;
     bool first_map_only_;
 
     ros::Duration gui_publish_period;
@@ -224,6 +227,8 @@ class AmclNode
 
     // For slowing play-back when reading directly from a bag file
     ros::WallDuration bag_scan_period_;
+
+    void requestMap();
 
     // Helper to get odometric pose from transform system
     bool getOdomPose(tf::Stamped<tf::Pose>& pose,
@@ -338,6 +343,7 @@ AmclNode::AmclNode() :
   boost::recursive_mutex::scoped_lock l(configuration_mutex_);
 
   // Grab params off the param server
+  private_nh_.param("use_map_topic", use_map_topic_, false);
   private_nh_.param("first_map_only", first_map_only_, false);
 
   double tmp;
@@ -451,7 +457,7 @@ AmclNode::AmclNode() :
   tf_ = new TransformListenerWrapper();
 
   amcl_internals_.header.frame_id = global_frame_id_;
-  amcl_internals_pub_ = nh_.advertise<AMCLInternals>("amcl_internals", 2, true);
+  amcl_internals_pub_ = nh_.advertise<maidbot_localization::AMCLInternals>("amcl_internals", 2, true);
 
   pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2, true);
   particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2, true);
@@ -470,8 +476,13 @@ AmclNode::AmclNode() :
                                                    this, _1));
   initial_pose_sub_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceived, this);
 
-  map_sub_ = nh_.subscribe("/grid_map", 1, &AmclNode::mapReceived, this);
-  ROS_INFO("Subscribed to grid map topic.");
+  if(use_map_topic_) {
+    map_sub_ = nh_.subscribe("/grid_map", 1, &AmclNode::mapReceived, this);
+    ROS_INFO("Subscribed to grid map topic.");
+  } else {
+    requestMap();
+  }
+
   m_force_update = false;
 
   dsrv_ = new dynamic_reconfigure::Server<amcl::AMCLConfig>(ros::NodeHandle("~"));
@@ -804,6 +815,25 @@ AmclNode::checkLaserReceived(const ros::TimerEvent& event)
 }
 
 void
+AmclNode::requestMap()
+{
+  boost::recursive_mutex::scoped_lock ml(configuration_mutex_);
+
+  // get map via RPC
+  maidbot_spatial_data::GetGrid::Request  req;
+  maidbot_spatial_data::GetGrid::Response resp;
+  ROS_INFO("Requesting the grid...");
+  while(!ros::service::call("/spatial_data_node/get_gridmap", req, resp) ||
+        resp.success == false)
+  {
+    ROS_WARN("Request for map failed; trying again...");
+    ros::Duration d(0.5);
+    d.sleep();
+  }
+  handleMapMessage(resp.grid);
+}
+
+void
 AmclNode::mapReceived(const grid_map_msgs::GridMap& msg)
 {
   if( first_map_only_ && first_map_received_ ) {
@@ -825,11 +855,6 @@ AmclNode::handleMapMessage(const grid_map_msgs::GridMap& msg)
            msg.info.length_x,
            msg.info.length_y,
            msg.info.resolution);
-
-  if(msg.header.frame_id != global_frame_id_)
-    ROS_WARN("Frame_id of map received:'%s' doesn't match global_frame_id:'%s;'. This could cause issues with reading published topics",
-             msg.header.frame_id.c_str(),
-             global_frame_id_.c_str());
 
   freeMapDependentMemory();
   // Clear queued laser objects because they hold pointers to the existing
@@ -952,9 +977,9 @@ AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg)
     int index = grid_map::getLinearIndexFromIndex(it.getUnwrappedIndex(), gridmap.getSize(), false);
     int size = gridmap.getSize().prod();
 
-    if(value == 255.0) // FREE
+    if(value <= 50.0) // FREE
       map->cells[size - index - 1].occ_state = -1;
-    else if(value == 0.0) // OBSTACLE
+    else if(value >= 150.0) // OBSTACLE
       map->cells[size - index - 1].occ_state = +1;
     else
       map->cells[size - index - 1].occ_state = 0;

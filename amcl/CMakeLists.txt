@@ -10,20 +10,11 @@ find_package(catkin REQUIRED
   roscpp
   tf
   dynamic_reconfigure
+  maidbot_spatial_data
+  maidbot_localization
 )
 
 find_package(Boost REQUIRED)
-
-# messages monitoring amcl health
-add_message_files(
-  FILES
-  AMCLInternals.msg
-)
-
-generate_messages(
-  DEPENDENCIES
-  std_msgs
-)
 
 # dynamic reconfigure
 generate_dynamic_reconfigure_options(
@@ -36,7 +27,6 @@ catkin_package(
         roscpp
         dynamic_reconfigure
         tf
-  CATKIN_DEPENDS nav_msgs std_srvs std_msgs
   INCLUDE_DIRS include
   LIBRARIES amcl_sensors amcl_map amcl_pf
 )
