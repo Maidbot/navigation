@@ -972,14 +972,14 @@ AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg)
   ROS_ASSERT(map->cells);
 
   for (grid_map::GridMapIterator it(gridmap); !it.isPastEnd(); ++it) {
-    float value = gridmap.at("map", *it);
+    float value = gridmap.at("localization", *it);
 
     int index = grid_map::getLinearIndexFromIndex(it.getUnwrappedIndex(), gridmap.getSize(), false);
     int size = gridmap.getSize().prod();
 
-    if(value <= 50.0) // FREE
+    if(value >= 205.0) // FREE
       map->cells[size - index - 1].occ_state = -1;
-    else if(value >= 150.0) // OBSTACLE
+    else if(value <= 90.0) // OBSTACLE
       map->cells[size - index - 1].occ_state = +1;
     else
       map->cells[size - index - 1].occ_state = 0;
