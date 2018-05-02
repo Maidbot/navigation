@@ -8,6 +8,7 @@ find_package(catkin REQUIRED
   grid_map_ros
   rosbag
   roscpp
+  std_srvs
   tf
   dynamic_reconfigure
   maidbot_spatial_data
