@@ -50,6 +50,7 @@
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
 #include "std_srvs/Empty.h"
+#include "std_srvs/SetBool.h"
 
 #include <grid_map_ros/grid_map_ros.hpp>
 #include <maidbot_spatial_data/GetGrid.h>
@@ -289,42 +290,87 @@ std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 
 #define USAGE "USAGE: amcl"
 
-boost::shared_ptr<AmclNode> amcl_node_ptr;
+bool active = false;
+bool preempted = false;
 
-void sigintHandler(int sig)
+ros::ServiceServer control_srv;
+
+bool controlCallback(std_srvs::SetBool::Request& req,
+                     std_srvs::SetBool::Response& res)
 {
-  // Save latest pose as we're shutting down.
-  amcl_node_ptr->savePoseToServer();
-  ros::shutdown();
+  if (req.data == true)
+  {
+    if (active)
+    {
+      res.message = "AMCL is already running.";
+      res.success = false;
+    }
+    else
+    {
+      res.message = "Will start AMCL.";
+      res.success = true;
+
+      active = true;
+    }
+  }
+  else
+  {
+    if (active)
+    {
+      res.message = "Will stop AMCL.";
+      res.success = true;
+
+      preempted = true;
+    }
+    else
+    {
+      res.message = "AMCL is not running.";
+      res.success = false;
+    }
+  }
+
+  return true;
 }
 
-int
-main(int argc, char** argv)
+int main(int argc, char** argv)
 {
   ros::init(argc, argv, "amcl");
-  ros::NodeHandle nh;
+  ros::NodeHandle nh("~");
 
-  // Override default sigint handler
-  signal(SIGINT, sigintHandler);
+  control_srv = nh.advertiseService("control", controlCallback);
 
-  // Make our node available to sigintHandler
-  amcl_node_ptr.reset(new AmclNode());
-
-  if (argc == 1)
+  while(ros::ok())
   {
-    // run using ROS input
-    ros::spin();
-  }
-  else if ((argc == 3) && (std::string(argv[1]) == "--run-from-bag"))
-  {
-    amcl_node_ptr->runFromBag(argv[2]);
-  }
+    // Wait to get a start request
+    while(!active)
+    {
+      ros::spinOnce();
+      ros::Duration(0.5).sleep();
 
-  // Without this, our boost locks are not shut down nicely
-  amcl_node_ptr.reset();
+      if (!ros::ok()) return 0;
+    }
+
+    AmclNode amcl;
+    if ((argc == 3) && (std::string(argv[1]) == "--run-from-bag"))
+    {
+      amcl.runFromBag(argv[2]);
+    }
+
+    // Keep going until you get a stop request
+    while(!preempted)
+    {
+      ros::spinOnce();
+      ros::Duration(0.05).sleep();
+
+      if (!ros::ok()) return 0;
+    }
+
+    preempted = false;
+    active = false;
+  }
 
   // To quote Morgan, Hooray!
-  return(0);
+  return 0;
 }
 
 AmclNode::AmclNode() :
@@ -827,6 +873,7 @@ AmclNode::requestMap()
         resp.success == false)
   {
     ROS_WARN("Request for map failed; trying again...");
+    ros::spinOnce();
     ros::Duration d(0.5);
     d.sleep();
   }
