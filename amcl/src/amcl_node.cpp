@@ -350,10 +350,10 @@ int main(int argc, char** argv)
       if (!ros::ok()) return 0;
     }
 
-    AmclNode* amcl = new AmclNode();
+    AmclNode amcl;
     if ((argc == 3) && (std::string(argv[1]) == "--run-from-bag"))
     {
-      amcl->runFromBag(argv[2]);
+      amcl.runFromBag(argv[2]);
     }
 
     // Keep going until you get a stop request
