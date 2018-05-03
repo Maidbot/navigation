@@ -50,6 +50,7 @@
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
 #include "std_srvs/Empty.h"
+#include "std_srvs/Trigger.h"
 #include "std_srvs/SetBool.h"
 
 #include <grid_map_ros/grid_map_ros.hpp>
@@ -290,10 +291,11 @@ std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 
 #define USAGE "USAGE: amcl"
 
+bool ready = false;
 bool active = false;
 bool preempted = false;
 
-ros::ServiceServer control_srv;
+ros::ServiceServer control_srv, ready_srv;
 
 bool controlCallback(std_srvs::SetBool::Request& req,
                      std_srvs::SetBool::Response& res)
@@ -332,12 +334,20 @@ bool controlCallback(std_srvs::SetBool::Request& req,
   return true;
 }
 
+bool readyCallback(std_srvs::Trigger::Request& req,
+                   std_srvs::Trigger::Response& res)
+{
+  res.success = ready;
+  return true;
+}
+
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "amcl");
   ros::NodeHandle nh("~");
 
   control_srv = nh.advertiseService("control", controlCallback);
+  ready_srv = nh.advertiseService("ready", readyCallback);
 
   while(ros::ok())
   {
@@ -356,6 +366,8 @@ int main(int argc, char** argv)
       amcl.runFromBag(argv[2]);
     }
 
+    ready = true;
+
     // Keep going until you get a stop request
     while(!preempted)
     {
@@ -367,6 +379,7 @@ int main(int argc, char** argv)
 
     preempted = false;
     active = false;
+    ready = false;
   }
 
   // To quote Morgan, Hooray!
@@ -973,7 +986,6 @@ AmclNode::handleMapMessage(const grid_map_msgs::GridMap& msg)
   // In case the initial pose message arrived before the first map,
   // try to apply the initial pose now that the map has arrived.
   applyInitialPose();
-
 }
 
 void
