@@ -882,7 +882,7 @@ AmclNode::requestMap()
   maidbot_spatial_data::GetGrid::Request  req;
   maidbot_spatial_data::GetGrid::Response resp;
   ROS_INFO("Requesting the grid...");
-  while(!ros::service::call("/spatial_data_node/get_gridmap", req, resp) ||
+  while(!ros::service::call("/spatial_data/get_gridmap", req, resp) ||
         resp.success == false)
   {
     ROS_WARN("Request for map failed; trying again...");
