@@ -1019,22 +1019,26 @@ AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg, XmlRpc::XmlRpcValue&
   map->cells = (map_cell_t*) malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
   ROS_ASSERT(map->cells);
 
-  maidbot_navigation_context::AreaTagToCriterionMap tag_to_criteria;
-  navigation_context_.loadAreaTagsFromMetadata(metadata[maidbot_navigation_context::LOCALIZATION_LAYER], tag_to_criteria);
+  maidbot_navigation_context::LayerToTagToCriterionMap layer_to_tag_to_criteria;
+  navigation_context_.loadAllLayerTags(metadata, layer_to_tag_to_criteria);
 
   maidbot_navigation_context::AreaTag free_tag, obstacle_tag;
   free_tag.type_ = maidbot_navigation_context::FREE;
   obstacle_tag.type_ = maidbot_navigation_context::OBSTACLE;
 
   maidbot_navigation_context::Criterion free_crit, obstacle_crit;
-  free_crit = tag_to_criteria[free_tag];
-  obstacle_crit = tag_to_criteria[obstacle_tag];
+  free_crit = layer_to_tag_to_criteria[maidbot_navigation_context::LOCALIZATION_LAYER][free_tag];
+  obstacle_crit = layer_to_tag_to_criteria[maidbot_navigation_context::LOCALIZATION_LAYER][obstacle_tag];
 
   for (grid_map::GridMapIterator it(gridmap); !it.isPastEnd(); ++it) {
     float value = gridmap.at("localization", *it);
 
     int index = grid_map::getLinearIndexFromIndex(it.getUnwrappedIndex(), gridmap.getSize(), false);
     int size = gridmap.getSize().prod();
+
+    // ROS_INFO("Free crit value is : %f | obstacle crit value is : %f", free_crit.value_, obstacle_crit.value_);
+    // ROS_INFO("Value is : %f.  Value is free? %s | obstacle ? %s", value, free_crit.applies(value) ? "true" : "false",
+    //   obstacle_crit.applies(value) ? "true" : "false");
 
     if( free_crit.applies(value) ) {
       map->cells[size - index - 1].occ_state = -1;
