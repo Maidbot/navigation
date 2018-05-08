@@ -13,6 +13,7 @@ find_package(catkin REQUIRED
   dynamic_reconfigure
   maidbot_spatial_data
   maidbot_localization
+  maidbot_navigation_context
 )
 
 find_package(Boost REQUIRED)

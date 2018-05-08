@@ -36,7 +36,7 @@
 #include "amcl/sensors/amcl_odom.h"
 #include "amcl/sensors/amcl_laser.h"
 
-// Espose internal variables
+// Expose internal variables
 #include "maidbot_localization/AMCLInternals.h"
 
 #include "ros/assert.h"
@@ -55,6 +55,7 @@
 
 #include <grid_map_ros/grid_map_ros.hpp>
 #include <maidbot_spatial_data/GetGrid.h>
+#include <maidbot_navigation_context/navigation_context.h>
 
 // For publishing particle filter stats
 #include "std_msgs/Float64MultiArray.h"
@@ -161,15 +162,17 @@ class AmclNode
     void laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan);
     void initialPoseReceived(const geometry_msgs::PoseWithCovarianceStampedConstPtr& msg);
     void handleInitialPoseMessage(const geometry_msgs::PoseWithCovarianceStamped& msg);
-    void mapReceived(const grid_map_msgs::GridMap& msg);
 
-    void handleMapMessage(const grid_map_msgs::GridMap& msg);
+    void handleMapMessage(const grid_map_msgs::GridMap& msg, XmlRpc::XmlRpcValue& metadata);
     void freeMapDependentMemory();
-    map_t* convertMap( const grid_map_msgs::GridMap& map_msg );
+    map_t* convertMap( const grid_map_msgs::GridMap& map_msg, XmlRpc::XmlRpcValue& metadata);
     void updatePoseFromServer();
     void applyInitialPose();
 
     double getYaw(tf::Pose& t);
+
+    // To help manage map context
+    maidbot_navigation_context::NavigationContext navigation_context_;
 
     // to expose pf and model internals.
     maidbot_localization::AMCLInternals amcl_internals_;
@@ -535,12 +538,7 @@ AmclNode::AmclNode() :
                                                    this, _1));
   initial_pose_sub_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceived, this);
 
-  if(use_map_topic_) {
-    map_sub_ = nh_.subscribe("/grid_map", 1, &AmclNode::mapReceived, this);
-    ROS_INFO("Subscribed to grid map topic.");
-  } else {
-    requestMap();
-  }
+  requestMap();
 
   m_force_update = false;
 
@@ -882,7 +880,7 @@ AmclNode::requestMap()
   maidbot_spatial_data::GetGrid::Request  req;
   maidbot_spatial_data::GetGrid::Response resp;
   ROS_INFO("Requesting the grid...");
-  while(!ros::service::call("/spatial_data_node/get_gridmap", req, resp) ||
+  while(!ros::service::call("/spatial_data/get_gridmap", req, resp) ||
         resp.success == false)
   {
     ROS_WARN("Request for map failed; trying again...");
@@ -890,24 +888,15 @@ AmclNode::requestMap()
     ros::Duration d(0.5);
     d.sleep();
   }
-  handleMapMessage(resp.grid);
-}
-
-void
-AmclNode::mapReceived(const grid_map_msgs::GridMap& msg)
-{
-  if( first_map_only_ && first_map_received_ ) {
-    return;
-  }
-
-  handleMapMessage(msg);
-  first_map_received_ = true;
+  XmlRpc::XmlRpcValue metadata;
+  navigation_context_.parseXmlString(resp.metadata, metadata);
+  handleMapMessage(resp.grid, metadata);
 }
 
 // TODO -- run lightweight slam (or "screenshot" costmap obstacles) and pass
 // the result to AMCL; could be useful for handling furniture and curtains?
 void
-AmclNode::handleMapMessage(const grid_map_msgs::GridMap& msg)
+AmclNode::handleMapMessage(const grid_map_msgs::GridMap& msg, XmlRpc::XmlRpcValue& metadata)
 {
   boost::recursive_mutex::scoped_lock cfl(configuration_mutex_);
 
@@ -923,7 +912,7 @@ AmclNode::handleMapMessage(const grid_map_msgs::GridMap& msg)
   lasers_update_.clear();
   frame_to_laser_.clear();
 
-  map_ = convertMap(msg);
+  map_ = convertMap(msg, metadata);
 
 #if NEW_UNIFORM_SAMPLING
   // Index of free space
@@ -1010,7 +999,7 @@ AmclNode::freeMapDependentMemory()
  * representation.  This allocates a map_t and returns it.
  */
 map_t*
-AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg)
+AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg, XmlRpc::XmlRpcValue& metadata)
 {
   map_t* map = map_alloc();
   ROS_ASSERT(map);
@@ -1030,18 +1019,30 @@ AmclNode::convertMap(const grid_map_msgs::GridMap& map_msg)
   map->cells = (map_cell_t*) malloc(sizeof(map_cell_t)*map->size_x*map->size_y);
   ROS_ASSERT(map->cells);
 
+  maidbot_navigation_context::AreaTagToCriterionMap tag_to_criteria;
+  navigation_context_.loadAreaTagsFromMetadata(metadata[maidbot_navigation_context::LOCALIZATION_LAYER], tag_to_criteria);
+
+  maidbot_navigation_context::AreaTag free_tag, obstacle_tag;
+  free_tag.type_ = maidbot_navigation_context::FREE;
+  obstacle_tag.type_ = maidbot_navigation_context::OBSTACLE;
+
+  maidbot_navigation_context::Criterion free_crit, obstacle_crit;
+  free_crit = tag_to_criteria[free_tag];
+  obstacle_crit = tag_to_criteria[obstacle_tag];
+
   for (grid_map::GridMapIterator it(gridmap); !it.isPastEnd(); ++it) {
     float value = gridmap.at("localization", *it);
 
     int index = grid_map::getLinearIndexFromIndex(it.getUnwrappedIndex(), gridmap.getSize(), false);
     int size = gridmap.getSize().prod();
 
-    if(value >= 205.0) // FREE
+    if( free_crit.applies(value) ) {
       map->cells[size - index - 1].occ_state = -1;
-    else if(value <= 90.0) // OBSTACLE
+    } else if ( obstacle_crit.applies(value) ) {
       map->cells[size - index - 1].occ_state = +1;
-    else
+    } else {
       map->cells[size - index - 1].occ_state = 0;
+    }
   }
 
   return map;
