@@ -113,7 +113,7 @@ AMCLLaser::SetModelLikelihoodFieldProb(double z_hit,
   this->beam_skip_threshold = beam_skip_threshold;
   this->beam_skip_error_threshold = beam_skip_error_threshold;
 	this->skipped_beam_ratio = 0.0;
-	this->useful_scan_count = 0.0;
+	this->useless_scan_count = 0.0;
 	this->total_scan_count = 0.0;
   map_update_cspace(this->map, max_occ_dist);
 }
@@ -331,7 +331,7 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
 
   double max_dist_prob = exp(-(self->map->max_occ_dist * self->map->max_occ_dist) / z_hit_denom);
 
-  //Beam skipping - ignores beams for which a majoirty of particles do not agree with the map
+  //Beam skipping - ignores beams for which a majority of particles do not agree with the map
   //prevents correct particles from getting down weighted because of unexpected obstacles
   //such as humans
 
@@ -340,7 +340,7 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
   double beam_skip_threshold = self->beam_skip_threshold;
 
   //we only do beam skipping if the filter has converged
-  if(do_beamskip && !set->converged){
+  if(do_beamskip && !set->converged) {
     do_beamskip = false;
   }
 
@@ -432,7 +432,6 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
       assert(pz >= 0.0);
 
       // TODO: outlier rejection for short readings
-
       if(!do_beamskip) {
 				log_p += log(pz);
       }
@@ -465,7 +464,7 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
     bool error = false;
 		self->skipped_beam_ratio = (double) skipped_beam_count / (double) beam_ind;
 		self->total_scan_count = (double) beam_ind;
-		self->useful_scan_count = (double) skipped_beam_count;
+		self->useless_scan_count = (double) skipped_beam_count;
 
     if(skipped_beam_count >= (beam_ind * self->beam_skip_error_threshold)) {
 			// TODO! use this as a lost indicator? At least make this error more verbose.
@@ -489,6 +488,8 @@ double AMCLLaser::LikelihoodFieldModelProb(AMCLLaserData *data, pf_sample_set_t*
 			total_weight += sample->weight;
     }
   }
+
+	self->total_weight = total_weight;
 
   delete [] obs_count;
   delete [] obs_mask;

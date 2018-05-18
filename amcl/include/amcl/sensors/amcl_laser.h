@@ -149,10 +149,11 @@ class AMCLLaser : public AMCLSensor
   // Threshold for outlier rejection (unused)
   private: double chi_outlier;
 
-  // To export lazer model stats
+  // To export laser model stats
   public: double skipped_beam_ratio;
   public: double total_scan_count;
-  public: double useful_scan_count; 
+  public: double useless_scan_count;
+  public: double total_weight;
 };
 
 

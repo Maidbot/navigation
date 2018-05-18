@@ -296,7 +296,7 @@ void pf_update_sensor(pf_t *pf, pf_sensor_model_fn_t sensor_fn, void *sensor_dat
 
   // Compute the sample weights
   total = (*sensor_fn) (sensor_data, set);
-
+  fprintf(stderr, "Total weight from lidar update is : %d\n", total);
   if (total > 0.0)
   {
     // Normalize weights

@@ -86,7 +86,7 @@ typedef struct
   // Total weight (weights sum to 1)
   double weight;
 
-  // Mean of pose esimate
+  // Mean of pose estimate
   pf_vector_t pf_pose_mean;
 
   // Covariance of pose estimate
@@ -1361,6 +1361,7 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     }
 
     lasers_[laser_index]->UpdateSensor(pf_, (AMCLSensorData*)&ldata);
+    amcl_internals_.total_weight = lasers_[laser_index]->total_weight;
 
     lasers_update_[laser_index] = false;
 
