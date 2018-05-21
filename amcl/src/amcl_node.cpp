@@ -54,7 +54,7 @@
 #include "std_srvs/SetBool.h"
 
 #include <grid_map_ros/grid_map_ros.hpp>
-#include <maidbot_spatial_data/GetGrid.h>
+#include <maidbot_spatial_data/GetAreaInfo.h>
 #include <maidbot_navigation_context/navigation_context.h>
 
 // For publishing particle filter stats
@@ -268,7 +268,7 @@ class AmclNode
     double alpha1_, alpha2_, alpha3_, alpha4_, alpha5_, alpha6_;
     double alpha_slow_, alpha_fast_;
     double z_hit_, z_short_, z_max_, z_rand_, sigma_hit_, lambda_short_;
-  //beam skip related params
+  // beam skip related params
     bool do_beamskip_;
     double beam_skip_distance_, beam_skip_threshold_, beam_skip_error_threshold_;
     double laser_likelihood_max_dist_;
@@ -877,10 +877,12 @@ AmclNode::requestMap()
   boost::recursive_mutex::scoped_lock ml(configuration_mutex_);
 
   // get map via RPC
-  maidbot_spatial_data::GetGrid::Request  req;
-  maidbot_spatial_data::GetGrid::Response resp;
+  maidbot_spatial_data::GetAreaInfo::Request  req;
+  maidbot_spatial_data::GetAreaInfo::Response resp;
+  private_nh_.param<std::string>("/configuration/area_id", req.area_id, "");
+
   ROS_INFO("Requesting the grid...");
-  while(!ros::service::call("/spatial_data/get_gridmap", req, resp) ||
+  while(!ros::service::call("/spatial_data/get_area_info", req, resp) ||
         resp.success == false)
   {
     ROS_WARN("Request for map failed; trying again...");
