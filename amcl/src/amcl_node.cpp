@@ -55,6 +55,7 @@
 
 #include <grid_map_ros/grid_map_ros.hpp>
 #include <maidbot_spatial_data/GetAreaInfo.h>
+#include <maidbot_spatial_data/GetGrid.h>
 #include <maidbot_navigation_context/navigation_context.h>
 
 // For publishing particle filter stats
@@ -166,6 +167,7 @@ class AmclNode
     void handleMapMessage(const grid_map_msgs::GridMap& msg, XmlRpc::XmlRpcValue& metadata);
     void freeMapDependentMemory();
     map_t* convertMap( const grid_map_msgs::GridMap& map_msg, XmlRpc::XmlRpcValue& metadata);
+    void updateMap(map_t* map, const grid_map_msgs::GridMap& map_msg, XmlRpc::XmlRpcValue& metadata);
     void updatePoseFromServer();
     void applyInitialPose();
 
@@ -233,7 +235,7 @@ class AmclNode
     // For slowing play-back when reading directly from a bag file
     ros::WallDuration bag_scan_period_;
 
-    void requestMap();
+    void requestMap(bool update);
 
     // Helper to get odometric pose from transform system
     bool getOdomPose(tf::Stamped<tf::Pose>& pose,
@@ -284,6 +286,8 @@ class AmclNode
     double peak_mode_delta_pct_;
 
     void reconfigureCB(amcl::AMCLConfig &config, uint32_t level);
+
+    ros::Time last_map_update_;
 
     ros::Time last_laser_received_ts_;
     ros::Duration laser_check_interval_;
@@ -538,7 +542,8 @@ AmclNode::AmclNode() :
                                                    this, _1));
   initial_pose_sub_ = nh_.subscribe("initialpose", 2, &AmclNode::initialPoseReceived, this);
 
-  requestMap();
+  last_map_update_ = ros::Time::now();
+  requestMap(false);
 
   m_force_update = false;
 
@@ -872,27 +877,45 @@ AmclNode::checkLaserReceived(const ros::TimerEvent& event)
 }
 
 void
-AmclNode::requestMap()
+AmclNode::requestMap(bool update)
 {
-  boost::recursive_mutex::scoped_lock ml(configuration_mutex_);
 
-  // get map via RPC
-  maidbot_spatial_data::GetAreaInfo::Request  req;
-  maidbot_spatial_data::GetAreaInfo::Response resp;
-  private_nh_.param<std::string>("/configuration/area_id", req.area_id, "");
-
-  ROS_INFO("Requesting the grid...");
-  while(!ros::service::call("/spatial_data/get_area_info", req, resp) ||
-        resp.success == false)
-  {
-    ROS_WARN("Request for map failed; trying again...");
-    ros::spinOnce();
-    ros::Duration d(0.5);
-    d.sleep();
+  last_map_update_ = ros::Time::now();
+  if(!update) {
+    ROS_INFO("Requesting the grid...");
+    boost::recursive_mutex::scoped_lock ml(configuration_mutex_);
+    // get map via RPC
+    maidbot_spatial_data::GetAreaInfo::Request  req;
+    maidbot_spatial_data::GetAreaInfo::Response resp;
+    private_nh_.param<std::string>("/configuration/area_id", req.area_id, "");
+    while(!ros::service::call("/spatial_data/get_area_info", req, resp) ||
+          resp.success == false)
+    {
+      ROS_WARN("Request for map failed; trying again...");
+      ros::spinOnce();
+      ros::Duration d(0.5);
+      d.sleep();
+    }
+    XmlRpc::XmlRpcValue metadata;
+    navigation_context_.parseXmlString(resp.metadata, metadata);
+    handleMapMessage(resp.grid, metadata);
+  } else {
+    if(map_) {
+      maidbot_spatial_data::GetGrid::Request req;
+      maidbot_spatial_data::GetGrid::Response resp;
+      req.layers.push_back("lidar_gen_map");
+      if(ros::service::call("/spatial_data/get_gridmap", req, resp) && resp.success) {
+        XmlRpc::XmlRpcValue metadata;
+        navigation_context_.parseXmlString(resp.metadata, metadata);
+        updateMap(map_, resp.grid, metadata);
+        ROS_WARN("Completed map update");
+      } else {
+        ROS_INFO("Map update failed.");
+      }
+    } else {
+      ROS_INFO("No map pointer");
+    }
   }
-  XmlRpc::XmlRpcValue metadata;
-  navigation_context_.parseXmlString(resp.metadata, metadata);
-  handleMapMessage(resp.grid, metadata);
 }
 
 // TODO -- run lightweight slam (or "screenshot" costmap obstacles) and pass
@@ -994,6 +1017,30 @@ AmclNode::freeMapDependentMemory()
   odom_ = NULL;
   delete laser_;
   laser_ = NULL;
+}
+
+void
+AmclNode::updateMap(map_t* map, const grid_map_msgs::GridMap& map_msg, XmlRpc::XmlRpcValue& metadata) {
+  grid_map::GridMap gridmap;
+  grid_map::GridMapRosConverter::fromMessage(map_msg, gridmap);
+
+  for (grid_map::GridMapIterator it(gridmap); !it.isPastEnd(); ++it) {
+    float value = gridmap.at("lidar_gen_map", *it);
+
+    int index = grid_map::getLinearIndexFromIndex(it.getUnwrappedIndex(), gridmap.getSize(), false);
+    int size = gridmap.getSize().prod();
+    // ROS_INFO("Free crit value is : %f | obstacle crit value is : %f", free_crit.value_, obstacle_crit.value_);
+    // ROS_INFO("Value is : %f.  Value is free? %s | obstacle ? %s", value, free_crit.applies(value) ? "true" : "false",
+    //   obstacle_crit.applies(value) ? "true" : "false");
+
+    if( value >= 10.0 ) {
+      map->cells[size - index - 1].occ_state = +1;
+    } else if ( value < 0.0 ) {
+      map->cells[size - index - 1].occ_state = -1;
+    } else {
+      map->cells[size - index - 1].occ_state = 0;
+    }
+  }
 }
 
 /**
@@ -1159,6 +1206,7 @@ void
 AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 {
   ros::Duration elapsed_since_last_scan = ros::Time::now() - last_laser_received_ts_;
+  ros::Duration elapsed_since_map_update = ros::Time::now() - last_map_update_;
   last_laser_received_ts_ = ros::Time::now();
   if( map_ == NULL ) {
     return;
@@ -1229,6 +1277,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
     amcl_internals_.odom_delta_x = delta.v[0];
     amcl_internals_.odom_delta_y = delta.v[1];
     amcl_internals_.odom_delta_theta = delta.v[2];
+
+    bool do_map_update = fabs(delta.v[2] <= 0.1) && elapsed_since_map_update.toSec() > 10.0 && map_ != NULL;
+    if(do_map_update) {
+      ROS_WARN("trying experimental map update");
+      requestMap(true);
+    }
 
     // See if we should update the filter
     bool update = fabs(delta.v[0]) >= d_thresh_ ||
