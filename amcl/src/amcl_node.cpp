@@ -49,6 +49,7 @@
 #include "geometry_msgs/PoseWithCovarianceStamped.h"
 #include "geometry_msgs/PoseArray.h"
 #include "geometry_msgs/Pose.h"
+#include "geometry_msgs/Vector3Stamped.h"
 #include "std_srvs/Empty.h"
 #include "std_srvs/Trigger.h"
 #include "std_srvs/SetBool.h"
@@ -177,6 +178,7 @@ class AmclNode
     // to expose pf and model internals.
     maidbot_localization::AMCLInternals amcl_internals_;
     ros::Publisher amcl_internals_pub_;
+    ros::Publisher odom_pose_delta_pub_, map_pose_delta_pub_;
 
     //parameter for what odom to use
     std::string odom_frame_id_;
@@ -473,6 +475,8 @@ AmclNode::AmclNode() :
 
   amcl_internals_.header.frame_id = global_frame_id_;
   amcl_internals_pub_ = nh_.advertise<maidbot_localization::AMCLInternals>("amcl_internals", 2, true);
+  odom_pose_delta_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/localization/odom_pose_delta", 2, true);
+  map_pose_delta_pub_ = nh_.advertise<geometry_msgs::Vector3Stamped>("/localization/map_pose_delta", 2, true);
 
   pose_pub_ = nh_.advertise<geometry_msgs::PoseWithCovarianceStamped>("amcl_pose", 2, true);
   particlecloud_pub_ = nh_.advertise<geometry_msgs::PoseArray>("particlecloud", 2, true);
@@ -1416,6 +1420,12 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       amcl_internals_.pose_y = p.pose.pose.position.y;
       amcl_internals_.pose_theta = hyps[max_weight_hyp].pf_pose_mean.v[2];
 
+      // // Compute change in pose -- IN ODOM FRAME
+      // //delta = pf_vector_coord_sub(pose, pf_odom_pose_);
+      // delta.v[0] = pose.v[0] - pf_odom_pose_.v[0];
+      // delta.v[1] = pose.v[1] - pf_odom_pose_.v[1];
+      // delta.v[2] = angle_diff(pose.v[2], pf_odom_pose_.v[2]);
+
 
       // Copy in the covariance, converting from 3-D to 6-D
       pf_sample_set_t* set = pf_->sets + pf_->current_set;
@@ -1452,15 +1462,29 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
 
       amcl_internals_.delta_t = (laser_scan->header.stamp - amcl_internals_.header.stamp).toSec();
       amcl_internals_.header.stamp = laser_scan->header.stamp;
-      amcl_internals_.delta_x = p.pose.pose.position.x
-        - last_published_pose.pose.pose.position.x;
-      amcl_internals_.delta_y = p.pose.pose.position.y
-        - last_published_pose.pose.pose.position.y;
+      amcl_internals_.delta_x = p.pose.pose.position.x - last_published_pose.pose.pose.position.x;
+      amcl_internals_.delta_y = p.pose.pose.position.y - last_published_pose.pose.pose.position.y;
       amcl_internals_.delta_theta = angle_diff(hyps[max_weight_hyp].pf_pose_mean.v[2], last_published_yaw);
+
+      geometry_msgs::Vector3Stamped odom_pose_delta, map_pose_delta;
+      odom_pose_delta.header.stamp = laser_scan->header.stamp;
+      odom_pose_delta.header.frame_id = "odom";
+      odom_pose_delta.vector.x = amcl_internals_.odom_delta_x;
+      odom_pose_delta.vector.y = amcl_internals_.odom_delta_y;
+      odom_pose_delta.vector.z = amcl_internals_.odom_delta_theta;
+
+      odom_pose_delta.header.stamp = laser_scan->header.stamp;
+      odom_pose_delta.header.frame_id = "map";
+      odom_pose_delta.vector.x = amcl_internals_.delta_x;
+      odom_pose_delta.vector.y = amcl_internals_.delta_y;
+      odom_pose_delta.vector.z = amcl_internals_.delta_theta;
 
       pose_pub_.publish(p);
       last_published_pose = p;
       last_published_yaw = hyps[max_weight_hyp].pf_pose_mean.v[2];
+
+      odom_pose_delta_pub_.publish(odom_pose_delta);
+      map_pose_delta_pub_.publish(map_pose_delta);
 
       ROS_DEBUG("New pose: %6.3f %6.3f %6.3f",
                hyps[max_weight_hyp].pf_pose_mean.v[0],
