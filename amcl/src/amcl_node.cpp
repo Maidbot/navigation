@@ -300,6 +300,7 @@ int main(int argc, char** argv)
 {
   ros::init(argc, argv, "amcl");
   ros::NodeHandle nh("~");
+  ROS_INFO("!!!!!!! Launching AMCL !!!!!!!!!");
   nh.setParam("/amcl/ready", false);
   nh.setParam("/amcl/active", false);
 
@@ -311,7 +312,6 @@ int main(int argc, char** argv)
     {
       ros::spinOnce();
       ros::Duration(0.5).sleep();
-      ROS_INFO("Waiting for someone to activate amcl.");
       nh.param("/amcl/active", active, false);
 
       if (!ros::ok()) return 0;
