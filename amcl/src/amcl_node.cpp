@@ -294,71 +294,25 @@ std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 
 #define USAGE "USAGE: amcl"
 
-bool ready = false;
 bool active = false;
-bool preempted = false;
-
-ros::ServiceServer control_srv, ready_srv;
-
-bool controlCallback(std_srvs::SetBool::Request& req,
-                     std_srvs::SetBool::Response& res)
-{
-  if (req.data == true)
-  {
-    if (active)
-    {
-      res.message = "AMCL is already running.";
-      res.success = false;
-    }
-    else
-    {
-      res.message = "Will start AMCL.";
-      res.success = true;
-
-      active = true;
-    }
-  }
-  else
-  {
-    if (active)
-    {
-      res.message = "Will stop AMCL.";
-      res.success = true;
-
-      preempted = true;
-    }
-    else
-    {
-      res.message = "AMCL is not running.";
-      res.success = false;
-    }
-  }
-
-  return true;
-}
-
-bool readyCallback(std_srvs::Trigger::Request& req,
-                   std_srvs::Trigger::Response& res)
-{
-  res.success = ready;
-  return true;
-}
 
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "amcl");
   ros::NodeHandle nh("~");
-
-  control_srv = nh.advertiseService("control", controlCallback);
-  ready_srv = nh.advertiseService("ready", readyCallback);
+  nh.setParam("/amcl/ready", false);
+  nh.setParam("/amcl/active", false);
 
   while(ros::ok())
   {
     // Wait to get a start request
+    nh.param("/amcl/active", active, false);
     while(!active)
     {
       ros::spinOnce();
       ros::Duration(0.5).sleep();
+      ROS_INFO("Waiting for someone to activate amcl.");
+      nh.param("/amcl/active", active, false);
 
       if (!ros::ok()) return 0;
     }
@@ -369,20 +323,19 @@ int main(int argc, char** argv)
       amcl.runFromBag(argv[2]);
     }
 
-    ready = true;
-
+    nh.setParam("/amcl/ready", true);
     // Keep going until you get a stop request
-    while(!preempted)
+    while(active)
     {
       ros::spinOnce();
       ros::Duration(0.05).sleep();
+      nh.param("/amcl/active", active, false);
 
       if (!ros::ok()) return 0;
     }
 
-    preempted = false;
     active = false;
-    ready = false;
+    nh.setParam("/amcl/ready", false);
   }
 
   // To quote Morgan, Hooray!
