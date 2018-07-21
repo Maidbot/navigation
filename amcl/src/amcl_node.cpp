@@ -1473,11 +1473,11 @@ AmclNode::laserReceived(const sensor_msgs::LaserScanConstPtr& laser_scan)
       odom_pose_delta.vector.y = amcl_internals_.odom_delta_y;
       odom_pose_delta.vector.z = amcl_internals_.odom_delta_theta;
 
-      odom_pose_delta.header.stamp = laser_scan->header.stamp;
-      odom_pose_delta.header.frame_id = "map";
-      odom_pose_delta.vector.x = amcl_internals_.delta_x;
-      odom_pose_delta.vector.y = amcl_internals_.delta_y;
-      odom_pose_delta.vector.z = amcl_internals_.delta_theta;
+      map_pose_delta.header.stamp = laser_scan->header.stamp;
+      map_pose_delta.header.frame_id = "map";
+      map_pose_delta.vector.x = amcl_internals_.delta_x;
+      map_pose_delta.vector.y = amcl_internals_.delta_y;
+      map_pose_delta.vector.z = amcl_internals_.delta_theta;
 
       pose_pub_.publish(p);
       last_published_pose = p;
