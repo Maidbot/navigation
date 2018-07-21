@@ -81,6 +81,8 @@
 
 using namespace amcl;
 
+bool active = false;
+
 // Pose hypothesis
 typedef struct
 {
@@ -295,8 +297,6 @@ class AmclNode
 std::vector<std::pair<int,int> > AmclNode::free_space_indices;
 
 #define USAGE "USAGE: amcl"
-
-bool active = false;
 
 int main(int argc, char** argv)
 {
@@ -837,19 +837,28 @@ AmclNode::requestMap()
   maidbot_spatial_data::GetAreaInfo::Request  req;
   maidbot_spatial_data::GetAreaInfo::Response resp;
   private_nh_.param<std::string>("/configuration/area_id", req.area_id, "");
+  private_nh_.param("/amcl/active", active, false);
 
   ROS_INFO("Requesting the grid...");
-  while(!ros::service::call("/spatial_data/get_area_info", req, resp) ||
-        resp.success == false)
+  while((!ros::service::call("/spatial_data/get_area_info", req, resp) ||
+        resp.success == false) && active)
   {
-    ROS_WARN("Request for map failed; trying again...");
+    ROS_WARN("Request for map failed; trying again. AMCL active? %s", active ? "true" : "false");
     ros::spinOnce();
     ros::Duration d(0.5);
+    private_nh_.param("/amcl/active", active, false);
+    if(!active) {
+      break;
+    }
     d.sleep();
   }
-  XmlRpc::XmlRpcValue metadata;
-  navigation_context_.parseXmlString(resp.metadata, metadata);
-  handleMapMessage(resp.grid, metadata);
+
+  if(active) {
+    XmlRpc::XmlRpcValue metadata;
+    navigation_context_.parseXmlString(resp.metadata, metadata);
+    handleMapMessage(resp.grid, metadata);
+  }
+
 }
 
 // TODO -- run lightweight slam (or "screenshot" costmap obstacles) and pass
